@@ -108,7 +108,12 @@ export default async (req) => {
 
 export async function finalizarJob({ store, jobId, textoTotal, stopReason, meta }) {
   const textoFinal = limparBlocoCodigo(textoTotal);
-  const foiCortada = stopReason === 'max_tokens';
+  // Considera "truncado" qualquer finalização que não foi um término
+  // natural do modelo (end_turn) — inclui max_tokens e também o caso de
+  // segurança em que o cron precisou finalizar por ter batido o limite
+  // de fatias (ver gerar-continuar-cron.js), pra sempre entregar algo
+  // útil ao usuário em vez de descartar o que já foi gerado.
+  const foiCortada = stopReason !== 'end_turn';
 
   await store.setJSON(jobId, {
     status: 'done',

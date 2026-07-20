@@ -56,12 +56,16 @@ export default async (req) => {
     const fatiaAtual = (job._fatia || 1) + 1;
 
     if (fatiaAtual > MAX_FATIAS) {
-      await store.setJSON(jobId, {
-        status: 'error',
-        error: 'A geração excedeu o tempo máximo permitido no servidor.',
-        text: job.text || '',
-        meta: job.meta || {},
-        updatedAt: Date.now(),
+      // Bateu o limite de segurança de fatias sem terminar naturalmente.
+      // Em vez de descartar tudo com um erro, finaliza com o que já foi
+      // gerado até aqui (marcado como truncado) — o usuário fica com uma
+      // pregação utilizável em vez de nada.
+      await finalizarJob({
+        store,
+        jobId,
+        textoTotal: job.text || '',
+        stopReason: 'limite_de_fatias_atingido',
+        meta: job.meta,
       });
       continue;
     }
