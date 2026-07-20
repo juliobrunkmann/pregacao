@@ -31,18 +31,25 @@
 # da documentação da Netlify prometer até 15 min de execução, a chamada de
 # saída pra Anthropic estava sendo cortada silenciosamente por volta de
 # ~25-30s (sem exceção, sem log — só parava de escrever progresso e o job
-# ficava travado pra sempre em "streaming"). Por isso a function se
-# AUTO-ENCADEIA: cada execução gera só uma fatia de até ~15s e, se a
-# pregação ainda não terminou, dispara uma nova chamada a si mesma
-# (fire-and-forget) continuando de onde parou (via "prefill" — manda o
-# texto já gerado como última mensagem do assistant), até a mensagem
-# terminar de verdade. Isso contorna o corte observado sem depender dele
-# nunca mudar. Ver comentário no topo de gerar-iniciar.js para detalhes.
+# ficava travado pra sempre em "streaming"). A 1ª correção fez a function
+# se AUTO-ENCADEAR (chamar a si mesma via fetch pra continuar), mas isso
+# esbarrou numa proteção anti-loop da Netlify: depois de ~9-10 chamadas
+# seguidas ela passa a responder 508 "Loop Detected" e a geração trava de
+# novo. A solução final substitui o auto-encadeamento por uma SCHEDULED
+# FUNCTION (netlify/functions/gerar-continuar-cron.js, roda a cada 1 min,
+# disparada pela própria Netlify — não é a function se chamando, então a
+# proteção anti-loop não entra em ação). gerar-iniciar.js processa só a
+# 1ª fatia (~15s); se ainda não terminou, grava o estado no Blobs e quem
+# continua a partir daí é o cron, uma fatia por tick, até no máximo
+# MAX_FATIAS (30, ver netlify/functions/_lib/geracao.js) — se mesmo assim
+# não terminar, finaliza com o que já foi gerado até ali (marcado como
+# truncado) em vez de descartar tudo com erro. Ver comentário no topo de
+# gerar-iniciar.js e gerar-continuar-cron.js para o histórico completo.
 #
 # /api/gerar-status (netlify/functions/gerar-status.js) é uma function
 # normal rápida, só lê o progresso do job no Blobs (store
 # "pregacoes-jobs") pra quem estiver acompanhando via polling. O cliente
-# também tem uma proteção extra: se o job ficar 60s sem nenhuma
+# também tem uma proteção extra: se o job ficar 90s sem nenhuma
 # atualização, mostra aviso de travamento em vez de esperar pra sempre.
 # /api/historico continua como function normal (usa @netlify/blobs,
 # store "pregacoes").
