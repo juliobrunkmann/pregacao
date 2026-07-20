@@ -39,7 +39,7 @@
 // =====================================================================
 
 import { getStore } from '@netlify/blobs';
-import { gerarUmaFatia, limparBlocoCodigo } from './_lib/geracao.js';
+import { gerarUmaFatia, limparBlocoCodigo, adicionarPendente, removerPendente } from './_lib/geracao.js';
 
 const SITE_URL =
   process.env.URL || process.env.DEPLOY_URL || 'https://friendly-bubblegum-e2dbd3.netlify.app';
@@ -87,7 +87,8 @@ export default async (req) => {
   if (fatia.cortadoPorTempo) {
     // Ainda não terminou — grava tudo que o cron precisa pra continuar
     // sozinho a partir daqui (sem depender do cliente nem desta function
-    // se auto-chamar).
+    // se auto-chamar), e entra no índice de pendências pra o cron saber
+    // que existe algo pra continuar sem precisar vasculhar tudo.
     await store.setJSON(jobId, {
       status: 'streaming',
       text: textoTotal,
@@ -99,6 +100,7 @@ export default async (req) => {
       _model: model,
       _fatia: 1,
     });
+    await adicionarPendente(store, jobId);
     return;
   }
 
@@ -122,6 +124,10 @@ export async function finalizarJob({ store, jobId, textoTotal, stopReason, meta 
     meta: meta || {},
     updatedAt: Date.now(),
   });
+  // Pregação concluída = "fechada" — sai do índice de pendências (se
+  // estava lá; se terminou já na 1ª fatia, nunca chegou a entrar, e
+  // remover algo que não está lá não faz nada).
+  await removerPendente(store, jobId);
 
   // Salva no histórico automaticamente — independe do cliente ainda estar
   // conectado. Se isso falhar por algum motivo, o texto final já está
