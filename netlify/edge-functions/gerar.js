@@ -50,7 +50,7 @@ export default async (req) => {
   const model = body.model || 'claude-sonnet-4-6';
   // Piso generoso — o cliente já manda um valor calculado pelo modo/profundidade,
   // isso aqui é só um fallback caso venha ausente.
-  const maxTokens = body.max_tokens || 6000;
+  const maxTokens = body.max_tokens || 9000;
 
   // Chama a Anthropic com streaming
   let anthropicRes;
