@@ -761,8 +761,6 @@ const BD = {
 // =====================================================================
 // ESTADO GLOBAL
 // =====================================================================
-let abortController = null;
-let isStreaming = false;
 let currentRawText = '';
 
 // Remove um bloco de código markdown (```html ... ``` ou ``` ... ```) que a IA
@@ -1167,8 +1165,6 @@ async function gerarPregacao(event) {
 
     // Reset
     currentRawText = '';
-    isStreaming = true;
-    abortController = new AbortController();
 
     const out = document.getElementById('pregacaoOutput');
     const mobileOut = document.getElementById('mobileOutputContent');
@@ -1190,6 +1186,7 @@ async function gerarPregacao(event) {
         <div style="display:inline-block;width:2rem;height:2rem;border:2px solid #e5e7eb;border-top-color:#000;border-radius:50%;animation:spin 1s linear infinite"></div>
         <p style="margin-top:0.75rem;color:#9ca3af">${loadingMsg}</p>
     </div>`;
+    mobileOut.innerHTML = out.innerHTML;
 
     document.getElementById('submitBtn').disabled = true;
     document.getElementById('actionButtons').classList.add('hidden');
@@ -1201,129 +1198,254 @@ async function gerarPregacao(event) {
         document.getElementById('mobileOutputModal').classList.add('show');
     }
 
+    // A geração roda numa Background Function no servidor (até 15 min), que
+    // continua até terminar mesmo que o navegador perca a conexão — troca de
+    // app no celular, tela apagou, aba suspensa, etc. O cliente só acompanha
+    // o progresso via polling num id de job, e retoma esse acompanhamento
+    // sozinho se a página recarregar enquanto a geração ainda está rolando
+    // (ver retomarJobSalvo/acompanharJob mais abaixo).
+    const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    const meta = {
+        tema, publico, contexto,
+        modo: modoAtual, tempo,
+        ocasiao: ocasiaoSalva,
+        profundidade: profundidadeSalva
+    };
+
     try {
-        const response = await fetch('/api/gerar', {
+        const resp = await fetch('/api/gerar-iniciar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, max_tokens: maxTokens }),
-            signal: abortController.signal
+            body: JSON.stringify({ jobId, prompt, max_tokens: maxTokens, meta })
         });
-
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error?.message || `Erro ${response.status}`);
+        if (!resp.ok) {
+            throw new Error('Não foi possível iniciar a geração (erro ' + resp.status + ')');
         }
-
-        // Streaming
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let htmlBuffer = '';
-        let sseBuffer = '';       // acumula bytes decodificados até termos linhas completas
-        let firstChunk = true;
-        let stopReason = null;    // 'end_turn' = terminou normalmente; 'max_tokens' = foi cortada
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            // decode com {stream:true} preserva caracteres multibyte (acentos) cortados entre chunks
-            sseBuffer += decoder.decode(value, { stream: true });
-            const lines = sseBuffer.split('\n');
-            // a última linha pode estar incompleta — guarda para o próximo chunk
-            sseBuffer = lines.pop();
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    if (data === '[DONE]') continue;
-                    try {
-                        const parsed = JSON.parse(data);
-                        if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-                            const text = parsed.delta.text;
-                            currentRawText += text;
-                            htmlBuffer += text;
-
-                            // Renderiza a cada chunk
-                            if (firstChunk) {
-                                out.innerHTML = '';
-                                firstChunk = false;
-                            }
-
-                            // Renderiza HTML acumulado com cursor piscante
-                            out.innerHTML = htmlBuffer + '<span class="streaming-cursor"></span>';
-                            mobileOut.innerHTML = out.innerHTML;
-
-                            // Auto-scroll
-                            out.scrollTop = out.scrollHeight;
-                        } else if (parsed.type === 'message_delta' && parsed.delta?.stop_reason) {
-                            // A Anthropic manda isso perto do fim do stream — indica POR QUE parou.
-                            // "max_tokens" = a mensagem foi cortada por atingir o limite de tamanho,
-                            // não porque terminou naturalmente.
-                            stopReason = parsed.delta.stop_reason;
-                        }
-                    } catch(e) {}
-                }
-            }
-        }
-
-        // Finalizado — remove cursor e eventual bloco de código ```html envolvendo o texto
-        htmlBuffer = limparBlocoCodigo(htmlBuffer);
-        out.innerHTML = htmlBuffer;
-        mobileOut.innerHTML = htmlBuffer;
-        currentRawText = htmlBuffer;
-
-        const foiCortada = stopReason === 'max_tokens';
-
-        if (foiCortada) {
-            // Deixa claro visualmente que o texto abaixo está incompleto, e avisa por toast.
-            out.innerHTML = htmlBuffer + `<div style="margin-top:1rem;padding:0.85rem 1rem;background:#fff3cd;border:1px solid #f0c674;border-radius:0.6rem;color:#7a5c00;font-size:0.85rem">
-                ⚠️ Esta mensagem foi cortada por atingir o limite de tamanho antes de terminar. Clique em "Gerar Novamente" para tentar de novo.
-            </div>`;
-            mobileOut.innerHTML = out.innerHTML;
-            mostrarErro('⚠️ Mensagem cortada — atingiu o limite de tamanho');
-        } else {
-            mostrarSucesso(modoAtual === 'pocket' ? '✅ Mensagem pocket gerada!' : '✅ Pregação gerada com sucesso!');
-        }
-
-        // Salva no histórico (Netlify Blobs) — em segundo plano, sem travar a UI
-        // (salva mesmo se cortada, pra não perder o que já foi gerado; o histórico
-        // mostra o conteúdo tal como está)
-        salvarPregacao({
-            tema,
-            publico,
-            contexto,
-            modo: modoAtual,
-            tempo,
-            ocasiao: ocasiaoSalva,
-            profundidade: profundidadeSalva,
-            conteudo: htmlBuffer
-        });
-
     } catch (err) {
-        if (err.name === 'AbortError') {
-            out.innerHTML = currentRawText || '<p style="color:#666;text-align:center;padding:2rem">Geração interrompida.</p>';
-            mobileOut.innerHTML = out.innerHTML;
-            mostrarErro('⏹ Geração interrompida');
-        } else {
-            out.innerHTML = `<div style="text-align:center;padding:2rem;color:#8b2222">
-                <p style="font-size:1.5rem">⚠️</p>
-                <p style="font-weight:600;margin-top:0.5rem">Erro ao gerar pregação</p>
-                <p style="font-size:0.8rem;color:#666;margin-top:0.25rem">${err.message}</p>
-            </div>`;
-            mostrarErro('❌ ' + err.message);
-        }
-    } finally {
-        isStreaming = false;
-        abortController = null;
+        out.innerHTML = `<div style="text-align:center;padding:2rem;color:#8b2222">
+            <p style="font-size:1.5rem">⚠️</p>
+            <p style="font-weight:600;margin-top:0.5rem">Erro ao iniciar a geração</p>
+            <p style="font-size:0.8rem;color:#666;margin-top:0.25rem">${err.message}</p>
+        </div>`;
+        mobileOut.innerHTML = out.innerHTML;
+        mostrarErro('❌ ' + err.message);
         document.getElementById('submitBtn').disabled = false;
         document.getElementById('actionButtons').classList.remove('hidden');
         document.getElementById('stopButtonWrap').classList.add('hidden');
+        return;
     }
+
+    salvarJobAtivo(jobId, meta);
+    acompanharJob(jobId);
+}
+
+// =====================================================================
+// ACOMPANHAMENTO DA GERAÇÃO EM SEGUNDO PLANO (polling)
+// A geração de verdade acontece numa Background Function no servidor,
+// então sobrevive a troca de app / aba suspensa / conexão caindo. Aqui
+// só cuidamos de: acompanhar o progresso, retomar depois de um reload,
+// e reagir rápido quando o app volta a ficar em primeiro plano.
+// =====================================================================
+let jobAtivoId = null;
+let pollTimer = null;
+
+function salvarJobAtivo(jobId, meta) {
+    try {
+        localStorage.setItem('pregacaoJobAtivo', JSON.stringify({ jobId, meta, startedAt: Date.now() }));
+    } catch (e) {}
+}
+
+function limparJobAtivo() {
+    try { localStorage.removeItem('pregacaoJobAtivo'); } catch (e) {}
+}
+
+function pararAcompanhamento() {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    jobAtivoId = null;
 }
 
 function pararGeracao() {
-    if (abortController) abortController.abort();
+    // Não é possível cancelar a Background Function no servidor — ela
+    // continua rodando e vai salvar a pregação no Histórico quando
+    // terminar. Isso só faz o navegador parar de acompanhar/atualizar a tela.
+    pararAcompanhamento();
+    limparJobAtivo();
+    const out = document.getElementById('pregacaoOutput');
+    const mobileOut = document.getElementById('mobileOutputContent');
+    out.innerHTML = currentRawText || '<p style="color:#666;text-align:center;padding:2rem">Acompanhamento interrompido.</p>';
+    mobileOut.innerHTML = out.innerHTML;
+    mostrarErro('⏹ A geração continua em segundo plano e vai aparecer no Histórico quando terminar');
+    document.getElementById('submitBtn').disabled = false;
+    document.getElementById('actionButtons').classList.remove('hidden');
+    document.getElementById('stopButtonWrap').classList.add('hidden');
 }
+
+async function acompanharJob(jobId, tentativasSemEncontrar) {
+    tentativasSemEncontrar = tentativasSemEncontrar || 0;
+    jobAtivoId = jobId;
+
+    const out = document.getElementById('pregacaoOutput');
+    const mobileOut = document.getElementById('mobileOutputContent');
+
+    let job;
+    try {
+        const res = await fetch('/api/gerar-status?id=' + encodeURIComponent(jobId));
+        if (res.status === 404) {
+            // A Background Function pode ainda não ter escrito o primeiro
+            // status — tenta mais algumas vezes antes de desistir.
+            if (tentativasSemEncontrar < 6) {
+                pollTimer = setTimeout(() => acompanharJob(jobId, tentativasSemEncontrar + 1), 1500);
+                return;
+            }
+            throw new Error('Essa geração não foi encontrada (pode ter expirado).');
+        }
+        if (!res.ok) throw new Error('Falha ao consultar status (' + res.status + ')');
+        job = await res.json();
+    } catch (err) {
+        pararAcompanhamento();
+        limparJobAtivo();
+        out.innerHTML = `<div style="text-align:center;padding:2rem;color:#8b2222">
+            <p style="font-size:1.5rem">⚠️</p>
+            <p style="font-weight:600;margin-top:0.5rem">Erro ao acompanhar a geração</p>
+            <p style="font-size:0.8rem;color:#666;margin-top:0.25rem">${err.message}</p>
+        </div>`;
+        mobileOut.innerHTML = out.innerHTML;
+        mostrarErro('❌ ' + err.message);
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('actionButtons').classList.remove('hidden');
+        document.getElementById('stopButtonWrap').classList.add('hidden');
+        return;
+    }
+
+    if (job.status === 'streaming' || job.status === 'pending') {
+        currentRawText = job.text || '';
+        if (job.text) {
+            out.innerHTML = job.text + '<span class="streaming-cursor"></span>';
+            mobileOut.innerHTML = out.innerHTML;
+            out.scrollTop = out.scrollHeight;
+        }
+        pollTimer = setTimeout(() => acompanharJob(jobId), 1400);
+        return;
+    }
+
+    if (job.status === 'error') {
+        pararAcompanhamento();
+        limparJobAtivo();
+        out.innerHTML = `<div style="text-align:center;padding:2rem;color:#8b2222">
+            <p style="font-size:1.5rem">⚠️</p>
+            <p style="font-weight:600;margin-top:0.5rem">Erro ao gerar pregação</p>
+            <p style="font-size:0.8rem;color:#666;margin-top:0.25rem">${job.error || 'Erro desconhecido'}</p>
+        </div>`;
+        mobileOut.innerHTML = out.innerHTML;
+        mostrarErro('❌ ' + (job.error || 'Erro ao gerar'));
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('actionButtons').classList.remove('hidden');
+        document.getElementById('stopButtonWrap').classList.add('hidden');
+        return;
+    }
+
+    // job.status === 'done' — já vem limpo de bloco ```html (a Background
+    // Function aplica isso antes de marcar como concluído) e já foi salvo
+    // no Histórico automaticamente pelo servidor.
+    pararAcompanhamento();
+    limparJobAtivo();
+
+    const textoFinal = job.text || '';
+    out.innerHTML = textoFinal;
+    mobileOut.innerHTML = textoFinal;
+    currentRawText = textoFinal;
+
+    const modo = (job.meta && job.meta.modo) || modoAtual;
+
+    if (job.truncated) {
+        out.innerHTML = textoFinal + `<div style="margin-top:1rem;padding:0.85rem 1rem;background:#fff3cd;border:1px solid #f0c674;border-radius:0.6rem;color:#7a5c00;font-size:0.85rem">
+            ⚠️ Esta mensagem foi cortada por atingir o limite de tamanho antes de terminar. Clique em "Gerar Novamente" para tentar de novo.
+        </div>`;
+        mobileOut.innerHTML = out.innerHTML;
+        mostrarErro('⚠️ Mensagem cortada — atingiu o limite de tamanho');
+    } else {
+        mostrarSucesso(modo === 'pocket' ? '✅ Mensagem pocket gerada!' : '✅ Pregação gerada com sucesso!');
+    }
+
+    document.getElementById('submitBtn').disabled = false;
+    document.getElementById('actionButtons').classList.remove('hidden');
+    document.getElementById('stopButtonWrap').classList.add('hidden');
+}
+
+// Se a página recarregar (troca de app no celular, aba suspensa e
+// descartada pelo sistema, etc.) enquanto uma geração ainda está rolando
+// em segundo plano, retoma o acompanhamento sozinho em vez de deixar a
+// pessoa achando que travou.
+function retomarJobSalvo() {
+    let salvo;
+    try {
+        const raw = localStorage.getItem('pregacaoJobAtivo');
+        if (!raw) return;
+        salvo = JSON.parse(raw);
+    } catch (e) { return; }
+
+    if (!salvo || !salvo.jobId || !salvo.startedAt) { limparJobAtivo(); return; }
+
+    // Background Function no Netlify roda no máximo 15 min — dá uma folga
+    // antes de considerar o job abandonado/expirado.
+    if (Date.now() - salvo.startedAt > 18 * 60 * 1000) {
+        limparJobAtivo();
+        return;
+    }
+
+    const m = salvo.meta || {};
+    const modo = m.modo || 'completa';
+    let badgeExtra = '';
+    if (modo === 'pocket') {
+        badgeExtra = `<span class="badge-modern">⚡ Pocket</span>${m.ocasiao ? `<span class="badge-modern">🎯 ${escaparHtml(m.ocasiao)}</span>` : ''}`;
+    } else {
+        badgeExtra = `<span class="badge-modern">⏱️ ${m.tempo || ''}min</span>`;
+    }
+
+    document.getElementById('outputPanel').classList.remove('hidden');
+    document.getElementById('outputIcon').textContent = modo === 'pocket' ? '⚡' : '📖';
+    document.getElementById('outputTitulo').textContent = modo === 'pocket' ? 'Mensagem Pocket' : 'Pregação Gerada';
+    document.getElementById('infoGerada').innerHTML = `
+        <div>
+            <span class="badge-modern">📌 ${escaparHtml(m.tema || '')}</span>
+            <span class="badge-modern">👥 ${escaparHtml((m.publico || '').substring(0,30))}${(m.publico||'').length>30?'...':''}</span>
+            ${badgeExtra}
+        </div>`;
+
+    const out = document.getElementById('pregacaoOutput');
+    const mobileOut = document.getElementById('mobileOutputContent');
+    out.innerHTML = `<div style="text-align:center;padding:3rem 1rem">
+        <div style="display:inline-block;width:2rem;height:2rem;border:2px solid #e5e7eb;border-top-color:#000;border-radius:50%;animation:spin 1s linear infinite"></div>
+        <p style="margin-top:0.75rem;color:#9ca3af">Retomando geração em andamento...</p>
+    </div>`;
+    mobileOut.innerHTML = out.innerHTML;
+
+    document.getElementById('submitBtn').disabled = true;
+    document.getElementById('actionButtons').classList.add('hidden');
+    document.getElementById('stopButtonWrap').classList.remove('hidden');
+
+    if (window.innerWidth >= 1024) {
+        document.getElementById('outputPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        document.getElementById('mobileOutputModal').classList.add('show');
+    }
+
+    acompanharJob(salvo.jobId);
+}
+
+// Ao voltar de segundo plano (troca de app, tela apagada), força uma
+// consulta imediata em vez de esperar o próximo ciclo do polling — o
+// timer costuma ficar pausado/atrasado enquanto a aba está oculta.
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && jobAtivoId) {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        acompanharJob(jobAtivoId);
+    }
+});
+
+// Roda assim que a página carrega — se havia uma geração em andamento
+// quando a página foi recarregada/reaberta, retoma o acompanhamento.
+retomarJobSalvo();
 
 // =====================================================================
 // UTILITÁRIOS DE UI
