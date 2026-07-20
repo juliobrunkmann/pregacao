@@ -24,6 +24,49 @@ export const TEMPO_MAX_POR_LEITURA_MS = 5000;
 // até ali, marcado como truncado, em vez de perder tudo com um erro.
 export const MAX_FATIAS = 30;
 
+// -----------------------------------------------------------------------
+// ÍNDICE DE PENDÊNCIAS — evita que o cron precise vasculhar TODO o
+// histórico de pregações já geradas a cada tick (1 em 1 minuto, pra
+// sempre) só pra descobrir se alguma está pendente. Sem isso, o custo do
+// tick ocioso cresce sem limite conforme mais pregações vão sendo
+// geradas ao longo dos meses — foi medido em produção que isso sozinho
+// poderia estourar o orçamento mensal de créditos do Netlify em poucos
+// meses de uso normal, mesmo a geração em si sendo barata.
+//
+// A chave abaixo guarda só uma lista pequena com os IDs das pregações
+// que ainda estão em aberto (status "streaming"). Uma pregação concluída
+// (ou com erro) sai da lista — fica "fechada". O tick do cron lê só essa
+// lista (1 leitura pequena e rápida); se estiver vazia, ele encerra na
+// hora sem tocar em nenhum job individual. O custo do tick ocioso fica
+// constante pra sempre, não importa quantas pregações já foram geradas.
+export const CHAVE_INDICE_PENDENTES = '_indice_pendentes';
+
+export async function obterPendentes(store) {
+  let indice;
+  try {
+    indice = await store.get(CHAVE_INDICE_PENDENTES, { type: 'json' });
+  } catch (e) {
+    indice = null;
+  }
+  return Array.isArray(indice) ? indice : [];
+}
+
+export async function adicionarPendente(store, jobId) {
+  const lista = await obterPendentes(store);
+  if (!lista.includes(jobId)) {
+    lista.push(jobId);
+    await store.setJSON(CHAVE_INDICE_PENDENTES, lista);
+  }
+}
+
+export async function removerPendente(store, jobId) {
+  const lista = await obterPendentes(store);
+  const nova = lista.filter((id) => id !== jobId);
+  if (nova.length !== lista.length) {
+    await store.setJSON(CHAVE_INDICE_PENDENTES, nova);
+  }
+}
+
 // Lê o próximo pedaço do stream com um limite de tempo — se demorar demais,
 // devolve um marcador de timeout em vez de ficar esperando indefinidamente,
 // pra quem chamou poder reavaliar quanto tempo ainda resta na fatia atual.
