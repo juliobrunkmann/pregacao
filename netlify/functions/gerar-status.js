@@ -29,7 +29,12 @@ export default async (req) => {
     return json({ status: 'not_found' }, 404);
   }
 
-  return json(job);
+  // Os campos que começam com "_" são estado interno usado só pelo
+  // gerar-iniciar.js/gerar-continuar-cron.js pra saber como continuar a
+  // geração (prompt completo, tokens, etc.) — não precisam (nem devem)
+  // voltar pro cliente a cada poll.
+  const { _prompt, _maxTokens, _model, _fatia, _continuar, ...paraCliente } = job;
+  return json(paraCliente);
 };
 
 function json(obj, status) {

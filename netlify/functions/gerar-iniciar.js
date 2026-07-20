@@ -1,62 +1,48 @@
 // =====================================================================
 // netlify/functions/gerar-iniciar.js
-// BACKGROUND FUNCTION — inicia a geração da pregação e roda até o fim
-// no servidor, independente do navegador continuar conectado ou não.
+// BACKGROUND FUNCTION — inicia a geração da pregação. Responde 202 na
+// hora e roda a 1ª fatia da geração no servidor, independente do
+// navegador continuar conectado ou não.
 //
 // Por quê: no celular, trocar de app (ou a tela apagar) faz o navegador
 // suspender/derrubar a conexão de streaming em andamento — a geração
 // simplesmente parava no meio sem nenhum erro visível.
 //
-// DESCOBERTA IMPORTANTE (testada ao vivo em produção): apesar de a
-// documentação da Netlify dizer que Background Functions rodam até 15
-// minutos, nesta conta/plano a chamada de saída para a Anthropic estava
-// sendo interrompida silenciosamente por volta de ~25-30s (sem erro,
-// sem exceção capturável — o texto simplesmente parava de crescer e o
-// job ficava travado em "streaming" para sempre). Então, em vez de
-// depender de uma única chamada rodar até o fim, esta function se
-// AUTO-ENCADEIA: cada execução gera só uma fatia (bem abaixo desse
-// limite observado) e, se a pregação ainda não terminou, dispara uma
-// nova chamada a si mesma (fire-and-forget, sem esperar resposta) para
-// continuar de onde parou — usando a técnica de "prefill": manda o
-// texto já gerado como se fosse a última mensagem do assistente, e a
-// Anthropic continua a partir dali. Isso se repete até a mensagem
-// terminar naturalmente (ou até o limite de segurança de continuações).
+// HISTÓRICO DAS DESCOBERTAS (testadas ao vivo em produção nesta conta):
+//   1ª tentativa — uma única Background Function rodando até o fim:
+//     apesar da documentação da Netlify prometer até 15 min de execução,
+//     a chamada de saída pra Anthropic estava sendo cortada
+//     silenciosamente por volta de ~25-30s (sem exceção, sem log — só
+//     parava de escrever progresso e o job ficava travado pra sempre).
+//   2ª tentativa — a function se auto-encadeava (chamava a si mesma via
+//     fetch a cada ~15s pra continuar): funcionou por algumas fatias,
+//     mas a Netlify tem uma proteção anti-loop que BLOQUEIA uma function
+//     chamando a si mesma repetidamente — depois de ~9-10 chamadas
+//     seguidas, passa a responder 508 "Loop Detected" e a geração trava
+//     de novo (confirmado testando com uma pregação de 60min/Profunda).
+//   3ª tentativa (a atual) — CRON: em vez de se auto-chamar, esta
+//     function processa só a 1ª fatia (gerarUmaFatia, ~15s) e, se ainda
+//     não terminou, GRAVA o estado de continuação no Blobs (prompt,
+//     tokens, texto acumulado, etc.) e simplesmente retorna. Quem
+//     continua a partir daí é o gerar-continuar-cron.js — uma Scheduled
+//     Function que a própria Netlify dispara sozinha a cada 1 minuto e
+//     processa uma fatia por vez de qualquer job pendente. Como não é
+//     a function chamando a si mesma, a proteção anti-loop não entra em
+//     ação, e o job continua até terminar de verdade — só que agora em
+//     "fatias" de ~1 em 1 minuto em vez de encadeadas na hora.
 //
-// O cliente acompanha o progresso via polling em /api/gerar-status
-// (lê o que esta function vai escrevendo no Blobs conforme gera), e
-// pode retomar esse acompanhamento depois de reabrir a página — nada
-// disso depende do cliente estar conectado, porque quem re-dispara a
-// próxima fatia é o próprio servidor, não o navegador.
-//
-// Fluxo:
-//   1. Cliente faz POST aqui com { jobId, prompt, max_tokens, meta }
-//   2. Esta function responde 202 na hora e continua rodando sozinha
-//   3. Gera uma fatia por até TEMPO_MAX_POR_CHAMADA_MS, escrevendo o
-//      progresso em Blobs (store "pregacoes-jobs", chave = jobId)
-//   4. Se a resposta da Anthropic ainda não terminou quando a fatia
-//      acaba, chama a si mesma de novo com o texto acumulado até agora
-//      (tentativa + 1) e encerra essa execução
-//   5. Quando a resposta termina de verdade, marca status "done" (ou
-//      "error") e salva automaticamente no histórico — assim a
-//      pregação não se perde mesmo que o cliente nunca mais volte.
+// O cliente acompanha o progresso via polling em /api/gerar-status (lê
+// o que vai sendo escrito no Blobs conforme a geração avança), e pode
+// retomar esse acompanhamento depois de reabrir a página — nada disso
+// depende do cliente estar conectado, porque quem processa as fatias
+// seguintes é o cron do servidor, não o navegador.
 // =====================================================================
 
 import { getStore } from '@netlify/blobs';
+import { gerarUmaFatia, limparBlocoCodigo } from './_lib/geracao.js';
 
 const SITE_URL =
   process.env.URL || process.env.DEPLOY_URL || 'https://friendly-bubblegum-e2dbd3.netlify.app';
-
-// Margem de segurança bem abaixo do corte de ~25-30s observado ao vivo.
-const TEMPO_MAX_POR_CHAMADA_MS = 15000;
-// Cada leitura individual do stream é limitada a isso — garante que a
-// checagem do tempo total roda com frequência, mesmo que uma leitura
-// específica demore (rede lenta, etc.), em vez de arriscar estourar o
-// limite da chamada esperando um único read() que não retorna.
-const TEMPO_MAX_POR_LEITURA_MS = 5000;
-// Trava de segurança: no máximo essa quantidade de continuações
-// encadeadas (25 x ~15s ≈ 6 minutos de geração total, bem mais que o
-// suficiente para a maior pregação que este app gera).
-const MAX_CONTINUACOES = 30;
 
 export default async (req) => {
   if (req.method !== 'POST') return;
@@ -68,29 +54,12 @@ export default async (req) => {
     return;
   }
 
-  const { jobId, prompt, max_tokens, meta, textoAcumulado, tentativa } = body || {};
+  const { jobId, prompt, max_tokens, meta } = body || {};
   if (!jobId || !prompt || typeof prompt !== 'string') return;
 
   const store = getStore({ name: 'pregacoes-jobs', consistency: 'strong' });
-  const numTentativa = tentativa || 0;
-  const acumulado = textoAcumulado || '';
-
-  if (numTentativa === 0) {
-    await store.setJSON(jobId, { status: 'pending', text: '', meta: meta || {}, updatedAt: Date.now() });
-  }
-
-  if (numTentativa >= MAX_CONTINUACOES) {
-    await store.setJSON(jobId, {
-      status: 'error',
-      error: 'A geração excedeu o tempo máximo permitido no servidor.',
-      text: limparBlocoCodigo(acumulado),
-      meta: meta || {},
-      updatedAt: Date.now(),
-    });
-    return;
-  }
-
   const apiKey = process.env.ANTHROPIC_API_KEY;
+
   if (!apiKey) {
     await store.setJSON(jobId, {
       status: 'error',
@@ -104,165 +73,40 @@ export default async (req) => {
   const model = (body && body.model) || 'claude-sonnet-4-6';
   const maxTokens = max_tokens || 9000;
 
-  // Se já tem texto acumulado de fatias anteriores, manda ele como uma
-  // mensagem do "assistant" seguida de uma nova instrução do "user" pedindo
-  // pra continuar exatamente dali. (Tentamos usar "prefill" — terminar a
-  // conversa com a mensagem do assistant pra Anthropic continuar direto —
-  // mas esse modelo não permite: "This model does not support assistant
-  // message prefill. The conversation must end with a user message." Por
-  // isso a conversa precisa terminar com uma mensagem do user mesmo.)
-  const messages = [{ role: 'user', content: prompt }];
-  if (acumulado) {
-    messages.push({ role: 'assistant', content: acumulado });
-    messages.push({
-      role: 'user',
-      content:
-        'Continue a resposta exatamente de onde parou. Não repita nenhum trecho já escrito, não adicione introduções, comentários ou observações sobre a continuação — apenas continue o texto a partir da última palavra ou tag HTML inacabada, como se nunca tivesse parado, até completar a pregação por inteiro.',
-    });
+  await store.setJSON(jobId, { status: 'pending', text: '', meta: meta || {}, updatedAt: Date.now() });
+
+  const fatia = await gerarUmaFatia({ apiKey, model, maxTokens, prompt, acumulado: '' });
+
+  if (fatia.erro) {
+    await store.setJSON(jobId, { status: 'error', error: fatia.erro, meta: meta || {}, updatedAt: Date.now() });
+    return;
   }
 
-  let anthropicRes;
-  try {
-    anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        stream: true,
-        messages,
-      }),
-    });
-  } catch (e) {
+  const textoTotal = fatia.textoNovo;
+
+  if (fatia.cortadoPorTempo) {
+    // Ainda não terminou — grava tudo que o cron precisa pra continuar
+    // sozinho a partir daqui (sem depender do cliente nem desta function
+    // se auto-chamar).
     await store.setJSON(jobId, {
-      status: 'error',
-      error: 'Falha ao contatar a API da Anthropic: ' + e.message,
-      text: limparBlocoCodigo(acumulado),
+      status: 'streaming',
+      text: textoTotal,
       meta: meta || {},
       updatedAt: Date.now(),
+      _continuar: true,
+      _prompt: prompt,
+      _maxTokens: maxTokens,
+      _model: model,
+      _fatia: 1,
     });
     return;
   }
 
-  if (!anthropicRes.ok) {
-    const errText = await anthropicRes.text();
-    let msg = 'Erro ' + anthropicRes.status + ' na API da Anthropic.';
-    try {
-      const parsed = JSON.parse(errText);
-      if (parsed?.error?.message) msg = parsed.error.message;
-    } catch (e) {}
-    await store.setJSON(jobId, {
-      status: 'error',
-      error: msg,
-      text: limparBlocoCodigo(acumulado),
-      meta: meta || {},
-      updatedAt: Date.now(),
-    });
-    return;
-  }
+  // Terminou na 1ª fatia (pregações mais curtas, modo Pocket, etc.)
+  await finalizarJob({ store, jobId, textoTotal, stopReason: fatia.stopReason, meta });
+};
 
-  const reader = anthropicRes.body.getReader();
-  const decoder = new TextDecoder();
-  let textoNovo = '';
-  let sseBuffer = '';
-  let stopReason = null;
-  let deltaCount = 0;
-  let cortadoPorTempo = false;
-  const inicioChamada = Date.now();
-
-  try {
-    while (true) {
-      const restante = TEMPO_MAX_POR_CHAMADA_MS - (Date.now() - inicioChamada);
-      if (restante <= 0) {
-        cortadoPorTempo = true;
-        try { await reader.cancel(); } catch (e) {}
-        break;
-      }
-
-      const resultado = await lerComTimeout(reader, Math.min(restante, TEMPO_MAX_POR_LEITURA_MS));
-      if (resultado.__timeout) continue; // volta ao topo e reavalia o tempo restante
-      const { done, value } = resultado;
-      if (done) break;
-
-      sseBuffer += decoder.decode(value, { stream: true });
-      const lines = sseBuffer.split('\n');
-      sseBuffer = lines.pop();
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-        try {
-          const parsed = JSON.parse(data);
-          if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-            textoNovo += parsed.delta.text;
-            deltaCount++;
-            if (deltaCount % 20 === 0) {
-              await store.setJSON(jobId, {
-                status: 'streaming',
-                text: acumulado + textoNovo,
-                meta: meta || {},
-                updatedAt: Date.now(),
-              });
-            }
-          } else if (parsed.type === 'message_delta' && parsed.delta?.stop_reason) {
-            stopReason = parsed.delta.stop_reason;
-          }
-        } catch (e) {}
-      }
-    }
-  } catch (e) {
-    // Conexão caiu no meio de uma fatia — ainda assim tenta continuar a
-    // partir do que já foi gerado até agora, em vez de perder tudo.
-    cortadoPorTempo = true;
-  }
-
-  const textoTotal = acumulado + textoNovo;
-
-  if (cortadoPorTempo) {
-    // Ainda não terminou — grava o progresso e dispara a próxima fatia
-    // (fire-and-forget: não espera a resposta, só confirma que foi aceita).
-    await store.setJSON(jobId, { status: 'streaming', text: textoTotal, meta: meta || {}, updatedAt: Date.now() });
-    try {
-      const proxima = await fetch(SITE_URL + '/api/gerar-iniciar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobId,
-          prompt,
-          max_tokens: maxTokens,
-          meta,
-          textoAcumulado: textoTotal,
-          tentativa: numTentativa + 1,
-        }),
-      });
-      if (!proxima.ok) {
-        await store.setJSON(jobId, {
-          status: 'error',
-          error: 'Não foi possível continuar a geração (erro ' + proxima.status + ').',
-          text: limparBlocoCodigo(textoTotal),
-          meta: meta || {},
-          updatedAt: Date.now(),
-        });
-      }
-    } catch (e) {
-      await store.setJSON(jobId, {
-        status: 'error',
-        error: 'Falha ao continuar a geração: ' + e.message,
-        text: limparBlocoCodigo(textoTotal),
-        meta: meta || {},
-        updatedAt: Date.now(),
-      });
-    }
-    return;
-  }
-
-  // Terminou de verdade — já vem limpo de bloco ```html antes de marcar
-  // como concluído.
+export async function finalizarJob({ store, jobId, textoTotal, stopReason, meta }) {
   const textoFinal = limparBlocoCodigo(textoTotal);
   const foiCortada = stopReason === 'max_tokens';
 
@@ -296,26 +140,6 @@ export default async (req) => {
   } catch (e) {
     // não trava o job por causa disso
   }
-};
-
-// Lê o próximo pedaço do stream com um limite de tempo — se demorar demais,
-// devolve um marcador de timeout em vez de ficar esperando indefinidamente,
-// pra quem chamou poder reavaliar quanto tempo ainda resta na fatia atual.
-function lerComTimeout(reader, timeoutMs) {
-  return Promise.race([
-    reader.read(),
-    new Promise((resolve) => setTimeout(() => resolve({ __timeout: true }), timeoutMs)),
-  ]);
-}
-
-// Remove um bloco de código markdown (```html ... ``` ou ``` ... ```) que a
-// IA às vezes adiciona por conta própria em volta do HTML gerado.
-function limparBlocoCodigo(texto) {
-  if (!texto) return texto;
-  let t = texto.trim();
-  t = t.replace(/^```(?:html)?\s*\n?/i, '');
-  t = t.replace(/\n?```\s*$/, '');
-  return t;
 }
 
 export const config = {
