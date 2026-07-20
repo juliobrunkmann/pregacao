@@ -1163,7 +1163,7 @@ async function gerarPregacao(event) {
     // Limite de tokens de saída — generoso o suficiente pra pregação completa
     // (3 pontos + introdução + fechamento + oração) nunca ser cortada no meio.
     // Pocket é bem mais curto, mas ainda assim damos folga.
-    const maxTokens = modoAtual === 'pocket' ? 3000 : 6000;
+    const maxTokens = modoAtual === 'pocket' ? 3000 : 9000;
 
     // Reset
     currentRawText = '';
