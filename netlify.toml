@@ -17,17 +17,32 @@
 # function (v2), então não é preciso configurar redirects aqui.
 #
 # /api/gerar-iniciar (netlify/functions/gerar-iniciar.js) é uma
-# BACKGROUND FUNCTION (config.background = true): responde 202 na hora
-# e continua rodando no servidor por até 15 min, independente do
-# navegador continuar conectado. Isso resolve dois problemas:
+# BACKGROUND FUNCTION (config.background = true): responde 202 na hora e
+# continua rodando no servidor, independente do navegador continuar
+# conectado. Isso resolve dois problemas:
 #   1. Pregações longas que demoram mais que os 60s do limite síncrono
 #      normal pra terminar de ser geradas.
 #   2. No celular, trocar de app / apagar a tela derrubava a conexão de
 #      streaming e a geração parava no meio sem erro nenhum — agora ela
 #      continua no servidor de qualquer forma, e salva sozinha no
 #      histórico quando termina.
+#
+# IMPORTANTE (descoberto testando ao vivo em produção nesta conta): apesar
+# da documentação da Netlify prometer até 15 min de execução, a chamada de
+# saída pra Anthropic estava sendo cortada silenciosamente por volta de
+# ~25-30s (sem exceção, sem log — só parava de escrever progresso e o job
+# ficava travado pra sempre em "streaming"). Por isso a function se
+# AUTO-ENCADEIA: cada execução gera só uma fatia de até ~15s e, se a
+# pregação ainda não terminou, dispara uma nova chamada a si mesma
+# (fire-and-forget) continuando de onde parou (via "prefill" — manda o
+# texto já gerado como última mensagem do assistant), até a mensagem
+# terminar de verdade. Isso contorna o corte observado sem depender dele
+# nunca mudar. Ver comentário no topo de gerar-iniciar.js para detalhes.
+#
 # /api/gerar-status (netlify/functions/gerar-status.js) é uma function
 # normal rápida, só lê o progresso do job no Blobs (store
-# "pregacoes-jobs") pra quem estiver acompanhando via polling.
+# "pregacoes-jobs") pra quem estiver acompanhando via polling. O cliente
+# também tem uma proteção extra: se o job ficar 60s sem nenhuma
+# atualização, mostra aviso de travamento em vez de esperar pra sempre.
 # /api/historico continua como function normal (usa @netlify/blobs,
 # store "pregacoes").

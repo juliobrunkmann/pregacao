@@ -1236,6 +1236,8 @@ async function gerarPregacao(event) {
     }
 
     salvarJobAtivo(jobId, meta);
+    ultimoUpdatedAtVisto = null;
+    ultimoProgressoEm = Date.now();
     acompanharJob(jobId);
 }
 
@@ -1248,6 +1250,12 @@ async function gerarPregacao(event) {
 // =====================================================================
 let jobAtivoId = null;
 let pollTimer = null;
+let ultimoUpdatedAtVisto = null;
+let ultimoProgressoEm = 0;
+// Se o job ficar esse tempo sem NENHUMA atualização (updatedAt parado),
+// tratamos como travado no servidor e avisamos — proteção extra além do
+// auto-encadeamento da Background Function, caso algo mesmo assim trave.
+const LIMITE_SEM_PROGRESSO_MS = 60000;
 
 function salvarJobAtivo(jobId, meta) {
     try {
@@ -1318,6 +1326,28 @@ async function acompanharJob(jobId, tentativasSemEncontrar) {
     }
 
     if (job.status === 'streaming' || job.status === 'pending') {
+        const agora = Date.now();
+        if (job.updatedAt !== ultimoUpdatedAtVisto) {
+            ultimoUpdatedAtVisto = job.updatedAt;
+            ultimoProgressoEm = agora;
+        } else if (ultimoProgressoEm && (agora - ultimoProgressoEm) > LIMITE_SEM_PROGRESSO_MS) {
+            // O servidor parou de atualizar o progresso — provavelmente travou.
+            // O texto gerado até agora não se perde, fica visível na tela.
+            pararAcompanhamento();
+            limparJobAtivo();
+            const textoParcial = job.text || currentRawText || '';
+            out.innerHTML = (textoParcial ? textoParcial : '') + `<div style="margin-top:1rem;padding:0.85rem 1rem;background:#fdecea;border:1px solid #e3a29b;border-radius:0.6rem;color:#8b2222;font-size:0.85rem">
+                ⚠️ A geração parece ter travado no servidor. Clique em "Gerar Novamente" para tentar de novo.
+            </div>`;
+            mobileOut.innerHTML = out.innerHTML;
+            currentRawText = textoParcial;
+            mostrarErro('⚠️ A geração travou — tente novamente');
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('actionButtons').classList.remove('hidden');
+            document.getElementById('stopButtonWrap').classList.add('hidden');
+            return;
+        }
+
         currentRawText = job.text || '';
         if (job.text) {
             out.innerHTML = job.text + '<span class="streaming-cursor"></span>';
@@ -1430,6 +1460,8 @@ function retomarJobSalvo() {
         document.getElementById('mobileOutputModal').classList.add('show');
     }
 
+    ultimoUpdatedAtVisto = null;
+    ultimoProgressoEm = Date.now();
     acompanharJob(salvo.jobId);
 }
 
