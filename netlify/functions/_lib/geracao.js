@@ -16,9 +16,13 @@ export const TEMPO_MAX_POR_CHAMADA_MS = 15000;
 export const TEMPO_MAX_POR_LEITURA_MS = 5000;
 // Trava de segurança: no máximo essa quantidade de fatias (cada uma
 // processada por um tick do cron, de ~1 em 1 minuto — ver
-// gerar-continuar-cron.js). 20 fatias ≈ 20 minutos, bem mais que o
-// suficiente pra maior pregação que este app gera.
-export const MAX_FATIAS = 20;
+// gerar-continuar-cron.js). 30 fatias ≈ 30 minutos — dá bastante margem
+// mesmo pro pior caso observado em teste real (60min/Profunda, que às
+// vezes o modelo gera de forma mais verbosa que o normal e demora mais
+// fatias pra concluir). Se mesmo assim estourar esse limite, o job NÃO
+// é descartado — gerar-continuar-cron.js finaliza com o texto acumulado
+// até ali, marcado como truncado, em vez de perder tudo com um erro.
+export const MAX_FATIAS = 30;
 
 // Lê o próximo pedaço do stream com um limite de tempo — se demorar demais,
 // devolve um marcador de timeout em vez de ficar esperando indefinidamente,
