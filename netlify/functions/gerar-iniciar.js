@@ -104,12 +104,21 @@ export default async (req) => {
   const model = (body && body.model) || 'claude-sonnet-4-6';
   const maxTokens = max_tokens || 9000;
 
-  // Se já tem texto acumulado de fatias anteriores, manda ele como a última
-  // mensagem do "assistant" (prefill) — a Anthropic continua a resposta
-  // exatamente de onde parou, em vez de começar tudo de novo.
+  // Se já tem texto acumulado de fatias anteriores, manda ele como uma
+  // mensagem do "assistant" seguida de uma nova instrução do "user" pedindo
+  // pra continuar exatamente dali. (Tentamos usar "prefill" — terminar a
+  // conversa com a mensagem do assistant pra Anthropic continuar direto —
+  // mas esse modelo não permite: "This model does not support assistant
+  // message prefill. The conversation must end with a user message." Por
+  // isso a conversa precisa terminar com uma mensagem do user mesmo.)
   const messages = [{ role: 'user', content: prompt }];
   if (acumulado) {
     messages.push({ role: 'assistant', content: acumulado });
+    messages.push({
+      role: 'user',
+      content:
+        'Continue a resposta exatamente de onde parou. Não repita nenhum trecho já escrito, não adicione introduções, comentários ou observações sobre a continuação — apenas continue o texto a partir da última palavra ou tag HTML inacabada, como se nunca tivesse parado, até completar a pregação por inteiro.',
+    });
   }
 
   let anthropicRes;
