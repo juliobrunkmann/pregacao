@@ -1160,6 +1160,11 @@ async function gerarPregacao(event) {
         prompt = construirPrompt(tema, publico, tempo, profundidade, contexto);
     }
 
+    // Limite de tokens de saída — generoso o suficiente pra pregação completa
+    // (3 pontos + introdução + fechamento + oração) nunca ser cortada no meio.
+    // Pocket é bem mais curto, mas ainda assim damos folga.
+    const maxTokens = modoAtual === 'pocket' ? 3000 : 6000;
+
     // Reset
     currentRawText = '';
     isStreaming = true;
@@ -1200,7 +1205,7 @@ async function gerarPregacao(event) {
         const response = await fetch('/api/gerar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify({ prompt, max_tokens: maxTokens }),
             signal: abortController.signal
         });
 
@@ -1215,6 +1220,7 @@ async function gerarPregacao(event) {
         let htmlBuffer = '';
         let sseBuffer = '';       // acumula bytes decodificados até termos linhas completas
         let firstChunk = true;
+        let stopReason = null;    // 'end_turn' = terminou normalmente; 'max_tokens' = foi cortada
 
         while (true) {
             const { done, value } = await reader.read();
@@ -1249,6 +1255,11 @@ async function gerarPregacao(event) {
 
                             // Auto-scroll
                             out.scrollTop = out.scrollHeight;
+                        } else if (parsed.type === 'message_delta' && parsed.delta?.stop_reason) {
+                            // A Anthropic manda isso perto do fim do stream — indica POR QUE parou.
+                            // "max_tokens" = a mensagem foi cortada por atingir o limite de tamanho,
+                            // não porque terminou naturalmente.
+                            stopReason = parsed.delta.stop_reason;
                         }
                     } catch(e) {}
                 }
@@ -1261,9 +1272,22 @@ async function gerarPregacao(event) {
         mobileOut.innerHTML = htmlBuffer;
         currentRawText = htmlBuffer;
 
-        mostrarSucesso(modoAtual === 'pocket' ? '✅ Mensagem pocket gerada!' : '✅ Pregação gerada com sucesso!');
+        const foiCortada = stopReason === 'max_tokens';
+
+        if (foiCortada) {
+            // Deixa claro visualmente que o texto abaixo está incompleto, e avisa por toast.
+            out.innerHTML = htmlBuffer + `<div style="margin-top:1rem;padding:0.85rem 1rem;background:#fff3cd;border:1px solid #f0c674;border-radius:0.6rem;color:#7a5c00;font-size:0.85rem">
+                ⚠️ Esta mensagem foi cortada por atingir o limite de tamanho antes de terminar. Clique em "Gerar Novamente" para tentar de novo.
+            </div>`;
+            mobileOut.innerHTML = out.innerHTML;
+            mostrarErro('⚠️ Mensagem cortada — atingiu o limite de tamanho');
+        } else {
+            mostrarSucesso(modoAtual === 'pocket' ? '✅ Mensagem pocket gerada!' : '✅ Pregação gerada com sucesso!');
+        }
 
         // Salva no histórico (Netlify Blobs) — em segundo plano, sem travar a UI
+        // (salva mesmo se cortada, pra não perder o que já foi gerado; o histórico
+        // mostra o conteúdo tal como está)
         salvarPregacao({
             tema,
             publico,

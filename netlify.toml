@@ -15,3 +15,11 @@
 # As rotas /api/gerar e /api/historico são definidas por
 # "export const config = { path: ... }" dentro de cada function (v2),
 # então não é preciso configurar redirects aqui.
+#
+# /api/gerar roda como EDGE FUNCTION (netlify/edge-functions/gerar.js),
+# não como function normal — Edge Functions não têm o limite fixo de 60s
+# de execução das functions síncronas, necessário para pregações longas
+# que demoram mais que isso pra terminar de ser geradas via streaming.
+# O diretório netlify/edge-functions é detectado por convenção, sem
+# precisar de configuração aqui.
+# /api/historico continua como function normal (usa @netlify/blobs).
