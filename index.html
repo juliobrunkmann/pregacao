@@ -1125,7 +1125,7 @@ Gere a mensagem pocket AGORA. Densa, direta, completa.`;
 }
 
 // =====================================================================
-// GERAÇÃO COM STREAMING
+// GERAÇÃO EM SEGUNDO PLANO (Background Function + polling)
 // =====================================================================
 async function gerarPregacao(event) {
     event.preventDefault();
@@ -1253,9 +1253,12 @@ let pollTimer = null;
 let ultimoUpdatedAtVisto = null;
 let ultimoProgressoEm = 0;
 // Se o job ficar esse tempo sem NENHUMA atualização (updatedAt parado),
-// tratamos como travado no servidor e avisamos — proteção extra além do
-// auto-encadeamento da Background Function, caso algo mesmo assim trave.
-const LIMITE_SEM_PROGRESSO_MS = 60000;
+// tratamos como travado no servidor e avisamos — proteção extra além da
+// Scheduled Function que continua a geração no servidor, caso algo mesmo
+// assim trave. Margem de 90s (bem acima do intervalo de 1 min do cron)
+// pra absorver variação/atraso normal de agendamento da Netlify sem
+// disparar um falso alarme de "travou" no meio de uma geração longa.
+const LIMITE_SEM_PROGRESSO_MS = 90000;
 
 function salvarJobAtivo(jobId, meta) {
     try {
