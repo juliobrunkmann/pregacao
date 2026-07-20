@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Pregações</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #000000 0%, #1a1a1a 50%, #0d0d0d 100%);
+            min-height: 100vh;
+            color: #333;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 25%;
+            width: 24rem; height: 24rem;
+            background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: -1;
+        }
+        main { max-width: 88rem; margin: 0 auto; padding: 1rem; }
+        .content {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        @media (min-width: 1024px) {
+            .content { grid-template-columns: 1fr 1fr; }
+        }
+        .card-modern {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 1.25rem;
+            padding: 1.75rem;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+            animation: scrollFade 0.8s ease-out;
+        }
+        .card-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; }
+        .card-header h2 { font-size: 1.5rem; font-weight: 700; color: #000; }
+        .divider-modern {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0,0,0,0.1), transparent);
+            margin: 1.5rem 0;
+        }
+        .form-group { margin-bottom: 1.25rem; }
+        label { display: block; font-size: 0.875rem; font-weight: 600; color: #000; margin-bottom: 0.75rem; }
+        input[type="text"], input[type="password"], textarea, select {
+            width: 100%;
+            background: rgba(250,250,250,0.9);
+            border: 2px solid rgba(0,0,0,0.1);
+            border-radius: 0.75rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.9375rem;
+            font-family: inherit;
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+            color: #000;
+        }
+        input[type="text"]::placeholder, input[type="password"]::placeholder, textarea::placeholder { color: rgba(0,0,0,0.4); }
+        input[type="text"]:focus, input[type="password"]:focus, textarea:focus, select:focus {
+            outline: none;
+            background: #fff;
+            border-color: #000;
+            box-shadow: 0 0 0 3px rgba(0,0,0,0.05), 0 10px 25px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23000000' d='M1 4l5 5 5-5z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            padding-right: 2.25rem;
+        }
+        textarea { min-height: 6rem; resize: vertical; }
+        .form-hint { font-size: 0.75rem; color: #666; margin-top: 0.5rem; font-style: italic; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .button-group { display: flex; gap: 0.75rem; padding-top: 0.5rem; }
+        button {
+            font-family: inherit;
+            border: none;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+            font-size: 0.875rem;
+            min-height: 2.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .btn-modern { background: #000; color: white; flex: 1; padding: 0 1.25rem; }
+        .btn-modern:hover:not(:disabled) { background: #222; box-shadow: 0 8px 20px rgba(0,0,0,0.3); transform: translateY(-1px); }
+        .btn-modern:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-secondary-modern {
+            background: rgba(240,240,240,0.9);
+            color: #000;
+            border: 1px solid rgba(0,0,0,0.1);
+            padding: 0 1rem;
+        }
+        .btn-secondary-modern:hover { background: #e0e0e0; border-color: #000; }
+        .btn-stop {
+            background: #fff;
+            color: #000;
+            border: 2px solid #000;
+            padding: 0 1rem;
+            flex: 1;
+        }
+        .btn-stop:hover { background: #f5f5f5; }
+        .output-panel { display: flex; flex-direction: column; }
+        .output-content {
+            flex: 1;
+            max-height: 30rem;
+            overflow-y: auto;
+            padding: 1rem;
+            border-left: 4px solid #000;
+            border-radius: 0 0.5rem 0.5rem 0;
+            background: rgba(250,250,250,0.5);
+            scroll-behavior: smooth;
+        }
+        .output-content::-webkit-scrollbar { width: 6px; }
+        .output-content::-webkit-scrollbar-track { background: transparent; }
+        .output-content::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+        .output-placeholder { text-align: center; padding: 3rem 1rem; color: #999; }
+        .hidden { display: none !important; }
+        .badge-modern {
+            display: inline-block;
+            background: rgba(0,0,0,0.07);
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 2rem;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #333;
+            margin: 0.125rem;
+        }
+        /* TOAST */
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #000;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 2rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            z-index: 9999;
+            transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+            pointer-events: none;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.error { background: #333; }
+        /* MODAL MOBILE */
+        #mobileOutputModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: flex-end;
+        }
+        #mobileOutputModal.show { display: flex; }
+        .modal-content {
+            background: white;
+            border-radius: 1.5rem 1.5rem 0 0;
+            padding: 1.5rem;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+            animation: modalOpen 0.35s cubic-bezier(0.4,0,0.2,1);
+        }
+        /* PREGAÇÃO FORMATADA */
+        .preg-titulo-principal {
+            font-size: 1.75rem;
+            font-weight: 800;
+            text-align: center;
+            color: #000;
+            margin-bottom: 0.25rem;
+            line-height: 1.2;
+        }
+        .preg-subtitulo {
+            font-size: 0.8rem;
+            color: #888;
+            text-align: center;
+            font-style: italic;
+            margin-bottom: 1.25rem;
+        }
+        .preg-secao-titulo {
+            font-size: 0.75rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: #000;
+            border-bottom: 2px solid #000;
+            padding-bottom: 0.4rem;
+            margin: 1.5rem 0 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .preg-paragrafo {
+            color: #222;
+            line-height: 1.9;
+            text-align: justify;
+            margin-bottom: 0.75rem;
+            font-size: 0.9375rem;
+        }
+        .preg-versiculo {
+            background: white;
+            border-left: 4px solid #333;
+            border-radius: 0 0.5rem 0.5rem 0;
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .preg-versiculo-ref { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; color: #555; margin-bottom: 0.25rem; letter-spacing: 0.05em; }
+        .preg-versiculo-texto { font-style: italic; color: #333; line-height: 1.7; font-size: 0.9rem; }
+        .preg-citacao {
+            background: #f3f3f3;
+            border-left: 4px solid #888;
+            border-radius: 0 0.5rem 0.5rem 0;
+            padding: 0.75rem 1rem;
+            margin: 1rem 0;
+        }
+        .preg-citacao-texto { font-style: italic; color: #444; line-height: 1.7; font-size: 0.9rem; }
+        .preg-citacao-autor { font-size: 0.65rem; font-weight: 700; text-align: right; text-transform: uppercase; color: #666; margin-top: 0.5rem; letter-spacing: 0.05em; }
+        .preg-destaque {
+            background: #1a1a1a;
+            color: white;
+            border-radius: 0.75rem;
+            padding: 1rem 1.25rem;
+            margin: 1.25rem 0;
+            font-size: 0.9rem;
+            line-height: 1.7;
+            font-weight: 500;
+        }
+        .preg-ponto {
+            border-left: 3px solid #000;
+            padding-left: 1rem;
+            margin: 1rem 0;
+        }
+        .preg-ponto-titulo { font-weight: 700; color: #000; margin-bottom: 0.5rem; font-size: 0.9375rem; }
+        .preg-oracao {
+            border: 1px solid #ddd;
+            background: #f9f9f9;
+            border-radius: 0.75rem;
+            padding: 1rem 1.25rem;
+            font-style: italic;
+            color: #444;
+            line-height: 1.8;
+            font-size: 0.9rem;
+        }
+        .preg-divisor { border: none; border-top: 1px dashed #ccc; margin: 1.25rem 0; }
+        /* POCKET MODE */
+        .pocket-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: #000;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.3rem 0.75rem;
+            border-radius: 2rem;
+            margin-bottom: 1rem;
+        }
+        .preg-pocket-versiculo {
+            background: #000;
+            color: white;
+            border-radius: 0.75rem;
+            padding: 1.25rem 1.5rem;
+            margin: 1rem 0 1.25rem;
+            text-align: center;
+        }
+        .preg-pocket-versiculo-ref {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(255,255,255,0.6);
+            margin-bottom: 0.5rem;
+        }
+        .preg-pocket-versiculo-texto {
+            font-style: italic;
+            font-size: 1rem;
+            line-height: 1.7;
+            color: white;
+        }
+        /* ORAÇÃO DE REPETIÇÃO */
+        .preg-oracao-repeticao {
+            border: 2px solid #000;
+            border-radius: 0.75rem;
+            padding: 1.25rem 1.5rem;
+            margin: 1.25rem 0;
+            background: #fff;
+        }
+        .preg-oracao-repeticao-label {
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #000;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .preg-oracao-repeticao-texto {
+            font-style: italic;
+            color: #222;
+            line-height: 1.9;
+            font-size: 0.95rem;
+            border-left: 3px solid #000;
+            padding-left: 1rem;
+        }
+        .modo-toggle {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.25rem;
+        }
+        .modo-btn {
+            flex: 1;
+            padding: 0.6rem 0.5rem;
+            border-radius: 0.6rem;
+            border: 2px solid rgba(0,0,0,0.1);
+            background: rgba(245,245,245,0.9);
+            color: #666;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+            min-height: auto;
+            text-align: center;
+        }
+        .modo-btn.ativo {
+            background: #000;
+            color: white;
+            border-color: #000;
+        }
+        .modo-btn:hover:not(.ativo) {
+            border-color: #000;
+            color: #000;
+        }
+        /* STREAMING CURSOR */
+        .streaming-cursor::after {
+            content: '▋';
+            animation: blink 0.7s infinite;
+            color: #000;
+        }
+        /* API KEY BOX */
+        .apikey-box {
+            background: rgba(0,0,0,0.04);
+            border: 1px dashed rgba(0,0,0,0.2);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .apikey-box label { font-size: 0.75rem; color: #666; margin-bottom: 0.5rem; }
+        .apikey-status {
+            font-size: 0.7rem;
+            margin-top: 0.4rem;
+            font-weight: 600;
+        }
+        .apikey-status.ok { color: #2d6a2d; }
+        .apikey-status.missing { color: #8b2222; }
+        /* ANIMAÇÕES */
+        @keyframes scrollFade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes modalOpen { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+        /* HEADER */
+        .site-header {
+            position: relative;
+            text-align: center;
+            padding: 2rem 1rem 1.5rem;
+            color: white;
+        }
+        .site-header h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; }
+        .site-header p { color: rgba(255,255,255,0.5); font-size: 0.875rem; margin-top: 0.25rem; }
+        .header-actions {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .btn-header {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 2rem;
+            padding: 0.5rem 1.1rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            min-height: auto;
+        }
+        .btn-header:hover { background: rgba(255,255,255,0.2); border-color: rgba(255,255,255,0.4); }
+        /* HISTÓRICO */
+        #historicoModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(6px);
+            z-index: 1100;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 2rem 1rem;
+            overflow-y: auto;
+        }
+        #historicoModal.show { display: flex; }
+        .historico-content {
+            background: #fff;
+            border-radius: 1.25rem;
+            padding: 1.75rem;
+            width: 100%;
+            max-width: 44rem;
+            max-height: 88vh;
+            overflow-y: auto;
+            animation: scrollFade 0.4s ease-out;
+        }
+        .historico-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .historico-head h2 { font-size: 1.35rem; font-weight: 800; color: #000; }
+        .historico-item {
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 0.85rem;
+            padding: 1rem 1.15rem;
+            margin-bottom: 0.75rem;
+            transition: all 0.2s;
+        }
+        .historico-item:hover { border-color: #000; box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
+        .historico-item-tema { font-size: 1rem; font-weight: 700; color: #000; margin-bottom: 0.15rem; }
+        .historico-item-meta { font-size: 0.75rem; color: #777; margin-bottom: 0.65rem; }
+        .historico-item-acoes { display: flex; gap: 0.5rem; }
+        .historico-item-acoes button {
+            font-size: 0.75rem;
+            padding: 0.4rem 0.9rem;
+            min-height: auto;
+            border-radius: 0.55rem;
+        }
+        .btn-excluir { background: #fff; color: #8b2222; border: 1px solid #e0b4b4; }
+        .btn-excluir:hover { background: #fbeaea; }
+        .historico-vazio { text-align: center; color: #999; padding: 2.5rem 1rem; }
+        .historico-loading { text-align: center; color: #999; padding: 2rem 1rem; }
+    </style>
+</head>
+<body>
+<main>
+
+    <header class="site-header">
+        <h1>Gerador de Pregações</h1>
+        <p>Mensagens completas e pocket, com fundamento e vida</p>
+        <div class="header-actions">
+            <button type="button" class="btn-header" onclick="abrirHistorico()">🗂️ Histórico</button>
+        </div>
+    </header>
+
+    <div id="toastBox" class="toast"></div>
+
+    <div class="content">
+        <!-- FORMULÁRIO -->
+        <div class="card-modern">
+            <div class="divider-modern"></div>
+
+            <form id="pregacaoForm">
+                <div class="form-group">
+                    <label>🎯 Tipo de Mensagem</label>
+                    <div class="modo-toggle">
+                        <button type="button" class="modo-btn ativo" id="btnModoCompleta" onclick="setModo('completa')">
+                            📖 Pregação Completa
+                        </button>
+                        <button type="button" class="modo-btn" id="btnModoPocket" onclick="setModo('pocket')">
+                            ⚡ Mensagem Pocket
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="tema">📌 Tema</label>
+                    <input type="text" id="tema" placeholder="Ex: identidade em Cristo, fé que age, libertação..." required>
+                    <div class="form-hint">Seja específico para gerar uma mensagem mais rica</div>
+                </div>
+                <div class="form-group">
+                    <label for="publico">👥 Público-Alvo</label>
+                    <textarea id="publico" placeholder="Ex: adolescentes de 13 a 15 anos na escola, casais em crise, líderes de célula..." required></textarea>
+                    <div class="form-hint">Quanto mais específico, mais contextualizada a mensagem</div>
+                </div>
+                <div id="camposDuracao" class="grid-2">
+                    <div class="form-group">
+                        <label for="tempo">⏱️ Duração</label>
+                        <select id="tempo">
+                            <option value="30">30 min</option>
+                            <option value="45" selected>45 min</option>
+                            <option value="60">60 min</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="profundidade">📊 Profundidade</label>
+                        <select id="profundidade">
+                            <option value="media" selected>Média</option>
+                            <option value="profunda">Profunda</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="campoPocket" class="hidden grid-2">
+                    <div class="form-group">
+                        <label for="tempoPocket">⏱️ Duração</label>
+                        <select id="tempoPocket">
+                            <option value="5">5 min</option>
+                            <option value="10" selected>10 min</option>
+                            <option value="15">15 min</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ocasiao">🎯 Ocasião</label>
+                        <select id="ocasiao">
+                            <option value="grupo familiar">Grupo familiar</option>
+                            <option value="transição de culto">Transição de culto</option>
+                            <option value="abertura de reunião">Abertura de reunião</option>
+                            <option value="devocional">Devocional</option>
+                            <option value="célula pequena">Célula pequena</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="campoPocketOracao" class="hidden form-group">
+                    <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer;font-weight:600">
+                        <input type="checkbox" id="incluirOracao" style="width:1.1rem;height:1.1rem;cursor:pointer;accent-color:#000">
+                        🙏 Incluir oração de repetição (opcional)
+                    </label>
+                    <div class="form-hint" style="margin-top:0.4rem">Gera uma oração curta para as pessoas repetirem em voz alta ao final da mensagem</div>
+                </div>
+                <div class="form-group">
+                    <label for="contexto">📝 Contexto (opcional)</label>
+                    <textarea id="contexto" placeholder="Ex: retiro de jovens com foco em autoestima e redes sociais, culto evangelístico de Natal, célula de casais em crise..."></textarea>
+                    <div class="form-hint">Este campo muda completamente o conteúdo — use-o!</div>
+                </div>
+                <div class="button-group">
+                    <button type="submit" id="submitBtn" class="btn-modern">⚡ Gerar Mensagem</button>
+                    <button type="reset" class="btn-secondary-modern" onclick="limpar()">🔄 Limpar</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- OUTPUT -->
+        <div id="outputPanel" class="card-modern output-panel hidden">
+            <div class="card-header">
+                <span style="font-size:1.5rem" id="outputIcon">📖</span>
+                <h2 id="outputTitulo">Mensagem Gerada</h2>
+            </div>
+            <div class="divider-modern"></div>
+            <div id="infoGerada" style="margin-bottom:1rem"></div>
+            <div id="pregacaoOutput" class="output-content">
+                <div class="output-placeholder">
+                    <div style="font-size:2rem;margin-bottom:0.5rem">✨</div>
+                    <p>Sua pregação aparecerá aqui</p>
+                </div>
+            </div>
+            <div class="divider-modern"></div>
+            <div id="actionButtons" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+                <button onclick="copiarParaClipboard()" class="btn-secondary-modern">📋 Copiar</button>
+                <button onclick="exportarTXT()" class="btn-secondary-modern">📄 Download</button>
+                <button onclick="imprimirPregacao()" class="btn-secondary-modern">🖨️ Imprimir</button>
+                <button onclick="regenerar()" class="btn-secondary-modern">🔄 Gerar Novamente</button>
+            </div>
+            <div id="stopButtonWrap" class="hidden" style="margin-top:0.75rem">
+                <button onclick="pararGeracao()" class="btn-stop">⏹ Parar Geração</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL MOBILE -->
+    <div id="mobileOutputModal">
+        <div class="modal-content">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                <h2 style="font-size:1.125rem;font-weight:700;color:#000">Pregação Gerada</h2>
+                <button onclick="closeMobileModal()" style="background:none;border:none;font-size:1.5rem;color:#666;cursor:pointer;min-height:auto;padding:0">×</button>
+            </div>
+            <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(0,0,0,0.1),transparent);margin-bottom:1rem"></div>
+            <div id="mobileOutputContent" style="font-size:0.875rem;line-height:1.8;color:#333"></div>
+            <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(0,0,0,0.1),transparent);margin:1rem 0"></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+                <button onclick="copiarParaClipboard()" class="btn-secondary-modern">📋 Copiar</button>
+                <button onclick="exportarTXT()" class="btn-secondary-modern">📄 Download</button>
+                <button onclick="imprimirPregacao()" class="btn-secondary-modern">🖨️ Imprimir</button>
+                <button onclick="regenerar()" class="btn-secondary-modern">🔄 Gerar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL HISTÓRICO -->
+    <div id="historicoModal">
+        <div class="historico-content">
+            <div class="historico-head">
+                <h2>🗂️ Histórico de Pregações</h2>
+                <button onclick="fecharHistorico()" style="background:none;border:none;font-size:1.6rem;color:#666;cursor:pointer;min-height:auto;padding:0">×</button>
+            </div>
+            <div class="divider-modern"></div>
+            <div id="historicoLista">
+                <div class="historico-loading">Carregando…</div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<!-- Contexto dos livros de Kenyon — coloque kenyon-context.js na mesma pasta -->
+<script src="kenyon-context.js"></script>
+
+<script>
+// Fallback caso kenyon-context.js não esteja na mesma pasta
+if (typeof KENYON === 'undefined') {
+    console.warn('kenyon-context.js não encontrado. Coloque-o na mesma pasta que este HTML.');
+    document.body.innerHTML = `<div style="font-family:Inter,sans-serif;background:#000;min-height:100vh;display:flex;align-items:center;justify-content:center;">
+        <div style="background:white;border-radius:1rem;padding:2rem;max-width:500px;text-align:center;">
+            <div style="font-size:2rem;margin-bottom:1rem">⚠️</div>
+            <h2 style="margin-bottom:0.5rem">Arquivo não encontrado</h2>
+            <p style="color:#666;margin-bottom:1rem">O arquivo <strong>kenyon-context.js</strong> precisa estar na mesma pasta que o <strong>index.html</strong>.</p>
+            <p style="color:#888;font-size:0.85rem">Certifique-se de que os dois arquivos estão juntos na mesma pasta e abra o HTML novamente.</p>
+        </div>
+    </div>`;
+}
+
+// =====================================================================
+// BANCO DE VERSÍCULOS — referência complementar
+// =====================================================================
+const BD = {
+  versiculos: {
+    fe: [
+      { ref: "Hebreus 11:1", texto: "Ora, a fé é a certeza daquilo que esperamos e a prova das coisas que não vemos." },
+      { ref: "Marcos 11:24", texto: "Por isso vos digo que tudo quanto pedirdes em oração, crede que recebereis, e havê-lo-eis." },
+      { ref: "Romanos 10:17", texto: "De sorte que a fé é pelo ouvir, e o ouvir pela palavra de Deus." },
+      { ref: "Tiago 2:17", texto: "Assim também a fé, se não tiver obras, é morta em si mesma." },
+      { ref: "Mateus 17:20", texto: "Se tiverdes fé como um grão de mostarda, direis a este monte: Passa daqui para acolá, e há de passar; e nada vos será impossível." }
+    ],
+    identidade: [
+      { ref: "2 Coríntios 5:17", texto: "Assim que, se alguém está em Cristo, nova criatura é; as coisas velhas já passaram; eis que tudo se fez novo." },
+      { ref: "1 João 3:1", texto: "Vede que amor nos concedeu o Pai, que fôssemos chamados filhos de Deus." },
+      { ref: "Efésios 1:4", texto: "Como também nos elegeu nele antes da fundação do mundo, para que fôssemos santos e irrepreensíveis diante dele em amor." },
+      { ref: "Romanos 8:16-17", texto: "O mesmo Espírito testifica com o nosso espírito que somos filhos de Deus. E, se filhos, também herdeiros; herdeiros de Deus, e coherdeiros de Cristo." },
+      { ref: "Gálatas 2:20", texto: "Já estou crucificado com Cristo; e vivo, não mais eu, mas Cristo vive em mim." }
+    ],
+    autoridade: [
+      { ref: "Lucas 10:19", texto: "Eis que vos dou poder para pisar serpentes e escorpiões, e toda a força do inimigo, e nada vos fará dano." },
+      { ref: "Mateus 28:18", texto: "É me dado todo o poder no céu e na terra." },
+      { ref: "Efésios 2:6", texto: "E com ele nos ressuscitou e nos fez assentar nos lugares celestiais em Cristo Jesus." },
+      { ref: "Filipenses 2:9-10", texto: "Pelo que também Deus o exaltou soberanamente e lhe deu um nome que é sobre todo o nome; Para que ao nome de Jesus se dobre todo o joelho." },
+      { ref: "Marcos 16:17", texto: "E estes sinais seguirão os que crerem: Em meu nome expulsarão os demônios; falarão novas línguas." }
+    ],
+    libertacao: [
+      { ref: "João 8:36", texto: "Mas, se o Filho vos libertar, verdadeiramente sereis livres." },
+      { ref: "Romanos 8:1-2", texto: "Portanto, agora nenhuma condenação há para os que estão em Cristo Jesus. Porque a lei do Espírito de vida, em Cristo Jesus, me livrou da lei do pecado e da morte." },
+      { ref: "Gálatas 5:1", texto: "Estai, pois, firmes na liberdade com que Cristo nos libertou, e não torneis a meter-vos no jugo da escravidão." },
+      { ref: "2 Coríntios 3:17", texto: "Ora, o Senhor é o Espírito; e onde está o Espírito do Senhor, aí há liberdade." },
+      { ref: "Isaías 61:1", texto: "O Espírito do Senhor Deus está sobre mim, porque o Senhor me ungiu para pregar boas novas aos mansos; enviou-me a curar os que têm o coração quebrantado." }
+    ],
+    cura: [
+      { ref: "1 Pedro 2:24", texto: "Levando ele mesmo em seu corpo os nossos pecados sobre o madeiro, para que nós, mortos para os pecados, vivêssemos para a justiça; e pelas suas feridas fostes sarados." },
+      { ref: "Jeremias 30:17", texto: "Mas eu restaurarei a saúde para ti, e te curarei das tuas feridas, diz o Senhor." },
+      { ref: "Isaías 53:5", texto: "Mas ele foi ferido por causa das nossas transgressões e moído por causa das nossas iniquidades; o castigo que nos traz a paz estava sobre ele, e com as suas pisaduras fomos sarados." },
+      { ref: "Tiago 5:15", texto: "E a oração da fé salvará o enfermo, e o Senhor o levantará; e, se tiver cometido pecados, ser-lhe-ão perdoados." },
+      { ref: "Salmos 107:20", texto: "Enviou a sua palavra, e os sarou, e os livrou das suas covas." }
+    ],
+    geral: [
+      { ref: "Salmos 23:1", texto: "O Senhor é meu pastor; nada me faltará." },
+      { ref: "Jeremias 29:11", texto: "Porque eu bem sei os pensamentos que tenho a vosso respeito, diz o Senhor; pensamentos de paz e não de mal, para vos dar um fim esperado." },
+      { ref: "Filipenses 4:13", texto: "Posso tudo em Cristo que me fortalece." },
+      { ref: "Romanos 8:28", texto: "E sabemos que todas as coisas contribuem juntamente para o bem daqueles que amam a Deus, daqueles que são chamados segundo o seu propósito." },
+      { ref: "Mateus 6:33", texto: "Mas buscai primeiro o reino de Deus e a sua justiça, e todas estas coisas vos serão acrescentadas." }
+    ]
+  },
+  citacoes: [
+    { texto: "A palavra que sai de sua boca é tão criativa quanto aquela que Deus falou no Gênesis. Você está, a cada momento, criando realidades com suas palavras.", autor: "E.W. Kenyon" },
+    { texto: "O Sentido da Presença é maior que a fé. Quando você sabe que Deus está com você, não é mais fé — é realidade.", autor: "E.W. Kenyon" },
+    { texto: "A fé que vem da Palavra de Deus é a fé mais alta que existe. Não é um sentimento. Não é uma emoção. É um conhecimento firme de que Deus cumpre o que prometeu.", autor: "E.W. Kenyon" },
+    { texto: "Você é o que a Palavra diz que você é. Você tem o que a Palavra diz que você tem. Você pode fazer o que a Palavra diz que você pode fazer. Esta é a base de tudo.", autor: "E.W. Kenyon" },
+    { texto: "Muitos cristãos vivem abaixo de seus privilégios porque não sabem o que lhes pertence em Cristo. Conheça seus direitos e exerça-os.", autor: "E.W. Kenyon" },
+    { texto: "A confissão da boca precede o recebimento. Deus falou e o mundo foi criado. Você fala e sua realidade é moldada.", autor: "E.W. Kenyon" },
+    { texto: "Não permita que os seus sentidos governem sua vida espiritual. A realidade espiritual é mais real do que aquilo que você pode ver, tocar ou ouvir.", autor: "E.W. Kenyon" },
+    { texto: "Jesus não morreu apenas para nos salvar do inferno. Ele morreu para nos restituir tudo que Adão perdeu — e ainda mais.", autor: "E.W. Kenyon" },
+    { texto: "Oração é o maior negócio do universo. É a cooperação do homem com Deus para realizar o impossível.", autor: "Kenneth Hagin" },
+    { texto: "Deus não pode usar um homem que não sabe que está sendo usado por Deus.", autor: "Andrew Murray" }
+  ]
+};
+
+// =====================================================================
+// ESTADO GLOBAL
+// =====================================================================
+let abortController = null;
+let isStreaming = false;
+let currentRawText = '';
+
+// =====================================================================
+// SEGURANÇA — a chave da API NÃO fica mais no navegador.
+// A geração passa pela Netlify Function /api/gerar, que usa a
+// variável de ambiente ANTHROPIC_API_KEY no servidor.
+// =====================================================================
+
+// =====================================================================
+// CONSTRUÇÃO DO PROMPT PARA A IA
+// =====================================================================
+function detectarTemaKenyon(tema, contexto) {
+    const texto = (tema + ' ' + (contexto || '')).toLowerCase();
+    if (texto.match(/identidade|quem sou|filho|filha|valor|autoestima|nova criatura|propósito/)) return 'identidade';
+    if (texto.match(/fé|fe|crer|confiar|acreditar|palavra|confissão/)) return 'fe';
+    if (texto.match(/autoridade|poder|nome de jesus|domínio|batalha|guerra espiritual/)) return 'autoridade';
+    if (texto.match(/libertar|libertação|livre|vício|preso|cativeiro|corrente/)) return 'libertacao';
+    if (texto.match(/cura|sarar|saúde|doença|enfermidade/)) return 'cura';
+    return 'nova_criacao';
+}
+
+function construirPrompt(tema, publico, tempo, profundidade, contexto) {
+    const isProfunda = profundidade === 'profunda';
+    const temaKenyon = detectarTemaKenyon(tema, contexto);
+    const temaEspec = KENYON.temas[temaKenyon];
+    const citacoesDoTema = KENYON.citacoesPorTema[temaKenyon] || KENYON.citacoesPorTema.nova_criacao;
+
+    // Extrai TODOS os conceitos dos livros relevantes ao tema
+    const todosLivros = [
+        { nome: 'Identificação', dados: KENYON.identificacao },
+        { nome: 'Realidades da Nova Criação', dados: KENYON.realidades },
+        { nome: 'Da Cruz ao Trono', dados: KENYON.cruzAoTrono },
+        { nome: 'Nome de Jesus', dados: KENYON.nomeDeJesus },
+        { nome: 'Poder das Palavras', dados: KENYON.poderDasPalavras },
+        { nome: 'Keys to Miracles', dados: KENYON.chavesParaMilagres },
+        { nome: 'Dois Tipos de Fé', dados: KENYON.doisTiposDeFe },
+        { nome: 'O Homem Interior', dados: KENYON.homemInterior },
+        { nome: 'Power of Your Words', dados: KENYON.poderDasPalavrasCompleto }
+    ].filter(l => l.dados);
+
+    const conceitosRelevantes = todosLivros
+        .flatMap(l => l.dados.conceitos_chave || [])
+        .slice(0, 14)
+        .map(c => `• ${c.conceito}:\n  ${c.explicacao}`)
+        .join('\n\n');
+
+    // citacoesDoTema já declarado acima
+    const todasCitacoes = todosLivros
+        .flatMap(l => (l.dados.citacoes_diretas || []).slice(0, 3))
+        .slice(0, 20)
+        .map(c => `"${c}"`)
+        .join('\n');
+
+    const versTodos = Object.entries(BD.versiculos).map(([cat, arr]) =>
+        arr.map(v => `${v.ref}: "${v.texto}"`).join('\n')
+    ).join('\n');
+
+    return `Você é um pregador chamado a gerar uma pregação completa, bíblica, profunda e pregável.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ESTRUTURA DE TRÊS CAMADAS — COMO ESTA PREGAÇÃO FUNCIONA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Esta pregação é construída em três camadas que trabalham juntas:
+
+CAMADA 1 — FUNDAMENTO TEOLÓGICO (contexto dos livros de Kenyon)
+Os conceitos dos livros abaixo formam o raciocínio teológico por trás de cada ponto. Você não cita Kenyon — você pensa a partir da teologia dele e a desenvolve com a Bíblia.
+
+CAMADA 2 — SUSTENTAÇÃO BÍBLICA
+Todo argumento teológico deve ser sustentado por versículos das Escrituras. Narrativas bíblicas reais (personagens como Abraão, Davi, Paulo, José, Pedro, Israel no deserto, etc.) aprofundam e ilustram os pontos.
+
+CAMADA 3 — ILUSTRAÇÃO DO MUNDO REAL
+Referências do mundo contemporâneo — tecnologia, redes sociais, algoritmos, empresas, negócios, mercado, liderança, comportamento digital — funcionam como PONTE entre a verdade bíblica e a realidade de quem ouve. Use-as SEMPRE que um conceito bíblico ou teológico tiver um paralelo claro no mundo atual. A ilustração torna o ponto concreto e acessível. O fluxo correto é: ilustração do mundo real → paralelo bíblico → conclusão teológica.
+
+Exemplos de como usar a Camada 3 corretamente:
+— "Assim como um algoritmo aprende com o que você consome e molda o que você vê, Paulo diz em Romanos 12:2 que a renovação da mente transforma a sua percepção da realidade — você começa a enxergar o mundo com os olhos de Deus, não com os olhos do sistema."
+— "Um empresário não age baseado no que sente num dia ruim — ele age baseado nos números reais do negócio. Da mesma forma, a fé não age pelo que os sentidos reportam, mas pelo que a Palavra de Deus estabelece como fato."
+— "Numa rede social, sua identidade é construída por curtidas, seguidores e aprovação externa. O evangelho diz o oposto: sua identidade foi estabelecida antes de você criar qualquer perfil — e ela não depende de nenhuma validação humana."
+
+O que NÃO fazer com a Camada 3:
+— Usar a referência contemporânea como se ela provasse a verdade espiritual
+— Incluir citações de especialistas, filósofos ou autores seculares como autoridade
+— Fazer a ilustração virar o argumento central — ela sempre serve ao argumento bíblico, nunca o substitui
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DADOS DA PREGAÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Tema: ${tema}
+Público-alvo: ${publico}
+Duração: ${tempo} minutos
+Profundidade: ${isProfunda ? 'Profunda' : 'Média'}
+Contexto específico: ${contexto || 'Não informado'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMADA 1 — FUNDAMENTO TEOLÓGICO (livros de Kenyon)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FUNDAMENTO SOBRE O TEMA "${tema}":
+${temaEspec.resumo}
+
+CONCEITOS DOS LIVROS PARA INCORPORAR NO RACIOCÍNIO:
+${conceitosRelevantes}
+
+FRASES E VERDADES DOS LIVROS (base para os parágrafos de desenvolvimento):
+${todasCitacoes}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMADA 2 — VERSÍCULOS BÍBLICOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${versTodos}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COMO CONSTRUIR CADA SEÇÃO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+INTRODUÇÃO:
+Abra com uma situação do mundo real ou uma narrativa bíblica que crie tensão em torno do tema. Se usar o mundo real, conecte imediatamente com a Bíblia. Apresente o problema central que a mensagem vai resolver e anuncie os 3 pontos. Personalize ao público e contexto informado.
+
+DESENVOLVIMENTO — 3 pontos com progressão lógica (problema → revelação → transformação):
+Cada ponto deve ter:
+• Argumento teológico em texto corrido construído a partir do fundamento de Kenyon
+• Mínimo 2 versículos explicados dentro do parágrafo — não apenas citados, mas desenvolvidos
+• Uma ilustração do mundo real (tecnologia, negócios, comportamento humano, redes sociais) que torne o ponto concreto, seguida do paralelo bíblico
+• Conexão direta com o que o público "${publico}" vive no cotidiano
+
+VERSÍCULOS — obrigatório:
+• Mínimo 6 versículos diferentes no total
+• Cada versículo deve ser explicado: o que revela, o que significa, qual a consequência prática
+• Use os versículos fornecidos e outros da Bíblia que se encaixem no tema
+
+APLICAÇÃO PRÁTICA:
+• Mencionar "${publico}" pelo nome
+• 2 ou 3 mudanças concretas e específicas que esse público pode fazer a partir de hoje
+• Use referências do mundo deles (trabalho, redes, relacionamentos, rotina) para tornar a aplicação real
+• Conectar diretamente ao contexto específico informado: "${contexto || 'use o tema e o público como base'}"
+
+CONCLUSÃO:
+• Retomar a situação ou narrativa aberta na introdução e mostrar como a mensagem a transforma
+• Chamado claro à decisão ou ação — uma posição concreta a tomar
+• Tom de encorajamento e convicção, nunca de condenação
+${isProfunda ? `
+MODO PROFUNDO ATIVADO:
+• Introdução: ampliar a narrativa de abertura com mais contexto (bíblico ou contemporâneo)
+• Desenvolvimento: 3 versículos por ponto, mais ilustrações do mundo real por ponto
+• Aplicação: parágrafo extra de desafio espiritual mais profundo
+• Conclusão: fechamento mais elaborado com declaração de fé` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS DE ESCRITA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• NUNCA escreva "Kenyon diz" — o pensamento dele é o seu fundamento, não uma citação
+• NUNCA cite filósofos, especialistas seculares ou autores externos como autoridade espiritual
+• TODO texto em parágrafos corridos — sem bullets dentro da pregação
+• Linguagem direta e acessível — como um pregador fala de verdade do púlpito
+• Cada ponto DESENVOLVE a ideia com profundidade, não apenas a anuncia
+• As ilustrações do mundo real tornam o ponto concreto — a Bíblia traz a resposta
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FORMATO HTML — use EXATAMENTE estas tags
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<p class="preg-titulo-principal">TÍTULO EM MAIÚSCULAS</p>
+<p class="preg-subtitulo">Subtítulo que resume a essência • Para: [público]</p>
+<hr class="preg-divisor">
+
+<div class="preg-versiculo">
+  <div class="preg-versiculo-ref">📖 Texto Base — [Livro Cap:Vers]</div>
+  <div class="preg-versiculo-texto">"[versículo completo]"</div>
+</div>
+
+<div class="preg-secao-titulo">I — Introdução</div>
+<p class="preg-paragrafo">[narrativa de abertura: história real, situação bíblica ou contemporânea que cria tensão — 150-200 palavras, parágrafos corridos, completamente personalizada ao contexto e público]</p>
+${isProfunda ? '<p class="preg-paragrafo">[parágrafo de contexto histórico-bíblico aprofundado ligado ao tema]</p>' : ''}
+<p class="preg-paragrafo">[apresentação do problema central e anúncio dos 3 pontos]</p>
+
+<div class="preg-secao-titulo">II — Desenvolvimento</div>
+
+<div class="preg-ponto">
+  <div class="preg-ponto-titulo">1. [Título claro e direto do ponto 1]</div>
+  <p class="preg-paragrafo">[argumento teológico em texto corrido, 180-220 palavras — desenvolve a ideia, usa contexto bíblico histórico se relevante, explica o que o versículo revela]</p>
+</div>
+<div class="preg-versiculo">
+  <div class="preg-versiculo-ref">📖 [Referência]</div>
+  <div class="preg-versiculo-texto">"[versículo]"</div>
+</div>
+<p class="preg-paragrafo">[explicação do versículo + conexão com o público específico — 80-100 palavras]</p>
+<div class="preg-versiculo">
+  <div class="preg-versiculo-ref">📖 [Segunda referência do ponto 1]</div>
+  <div class="preg-versiculo-texto">"[versículo complementar]"</div>
+</div>
+
+<div class="preg-ponto">
+  <div class="preg-ponto-titulo">2. [Título claro e direto do ponto 2]</div>
+  <p class="preg-paragrafo">[argumento teológico em texto corrido, 180-220 palavras — progressão lógica do ponto 1, aprofunda a revelação]</p>
+</div>
+<div class="preg-versiculo">
+  <div class="preg-versiculo-ref">📖 [Referência]</div>
+  <div class="preg-versiculo-texto">"[versículo]"</div>
+</div>
+<p class="preg-paragrafo">[explicação do versículo + narrativa bíblica contextual se aplicável — 80-100 palavras]</p>
+<div class="preg-versiculo">
+  <div class="preg-versiculo-ref">📖 [Segunda referência do ponto 2]</div>
+  <div class="preg-versiculo-texto">"[versículo complementar]"</div>
+</div>
+${isProfunda ? `<div class="preg-versiculo"><div class="preg-versiculo-ref">📖 [Terceira referência]</div><div class="preg-versiculo-texto">"[versículo adicional profundo]"</div></div>` : ''}
+
+<div class="preg-ponto">
+  <div class="preg-ponto-titulo">3. [Título claro e direto do ponto 3]</div>
+  <p class="preg-paragrafo">[argumento teológico em texto corrido, 180-220 palavras — ponto de virada: da revelação para a transformação prática]</p>
+</div>
+<div class="preg-versiculo">
+  <div class="preg-versiculo-ref">📖 [Referência]</div>
+  <div class="preg-versiculo-texto">"[versículo]"</div>
+</div>
+<p class="preg-paragrafo">[explicação do versículo + como isso muda a vida concretamente — 80-100 palavras]</p>
+<div class="preg-versiculo">
+  <div class="preg-versiculo-ref">📖 [Segunda referência do ponto 3]</div>
+  <div class="preg-versiculo-texto">"[versículo complementar]"</div>
+</div>
+
+<div class="preg-destaque">💡 [frase de destaque: verdade central da mensagem em 1-2 frases poderosas, que a pessoa vai levar para casa]</div>
+
+<div class="preg-secao-titulo">III — Aplicação Prática</div>
+<p class="preg-paragrafo">[parágrafo dirigido especificamente a "${publico}" pelo nome — 100-120 palavras — como a teologia desta mensagem muda o dia a dia deles agora]</p>
+<p class="preg-paragrafo">[2 ou 3 mudanças concretas e específicas que esse público pode começar a fazer a partir de hoje — em texto corrido, não lista]</p>
+${isProfunda ? '<p class="preg-paragrafo">[desafio espiritual mais profundo: o que acontece quando essa verdade realmente governa a vida — 80-100 palavras]</p>' : ''}
+
+<hr class="preg-divisor">
+<div class="preg-secao-titulo">IV — Conclusão</div>
+<p class="preg-paragrafo">[fecha o ciclo da introdução — retoma a narrativa ou situação do início e mostra como a mensagem a transforma — 120-150 palavras — termina com chamado claro à decisão ou ação]</p>
+
+<div class="preg-secao-titulo">🙏 Oração Final</div>
+<div class="preg-oracao">[oração específica para o tema e público — 80-100 palavras — intercede, declara verdades da Palavra sobre a situação desse público, não genérica]</div>
+
+Gere a pregação AGORA. Ela deve soar como um sermão real pregado do púlpito — com vida, convicção e clareza bíblica.`;
+}
+
+// =====================================================================
+// MODO — completa ou pocket
+// =====================================================================
+let modoAtual = 'completa';
+
+function setModo(modo) {
+    modoAtual = modo;
+    document.getElementById('btnModoCompleta').className = 'modo-btn' + (modo === 'completa' ? ' ativo' : '');
+    document.getElementById('btnModoPocket').className = 'modo-btn' + (modo === 'pocket' ? ' ativo' : '');
+    document.getElementById('camposDuracao').classList.toggle('hidden', modo === 'pocket');
+    document.getElementById('campoPocket').classList.toggle('hidden', modo !== 'pocket');
+    document.getElementById('campoPocketOracao').classList.toggle('hidden', modo !== 'pocket');
+    document.getElementById('outputIcon').textContent = modo === 'pocket' ? '⚡' : '📖';
+    document.getElementById('outputTitulo').textContent = modo === 'pocket' ? 'Mensagem Pocket' : 'Pregação Gerada';
+}
+
+function construirPromptPocket(tema, publico, tempo, ocasiao, contexto, comOracao) {
+    const temaKenyon = detectarTemaKenyon(tema, contexto);
+    const temaEspec = KENYON.temas[temaKenyon];
+
+    const conceitosPocket = [
+        ...KENYON.identificacao.conceitos_chave,
+        ...KENYON.realidades.conceitos_chave,
+        ...(KENYON.doisTiposDeFe ? KENYON.doisTiposDeFe.conceitos_chave : []),
+        ...(KENYON.homemInterior ? KENYON.homemInterior.conceitos_chave : [])
+    ].slice(0, 5).map(c => `• ${c.conceito}: ${c.explicacao}`).join('\n\n');
+
+    const versTema = BD.versiculos[temaKenyon] || BD.versiculos.geral;
+    const versiculosRef = versTema.map(v => `${v.ref}: "${v.texto}"`).join('\n');
+
+    const blocoOracao = comOracao ? `
+7. ORAÇÃO DE REPETIÇÃO — uma oração de 5 a 8 linhas curtas, escritas para a PESSOA REPETIR EM VOZ ALTA. Características obrigatórias:
+   • Escrita na primeira pessoa ("Pai, eu creio que...", "Senhor, eu declaro...", "Em Nome de Jesus, eu...")
+   • Cada linha é uma declaração de fé baseada na verdade pregada — não um pedido genérico
+   • Linguagem simples, direta, que qualquer pessoa consegue repetir naturalmente
+   • Deve declarar e apropriar a verdade do tema, não apenas pedir por ela
+   • Tom de convicção, não de súplica
+` : '';
+
+    const formatoOracao = comOracao ? `
+<div class="preg-oracao-repeticao">
+  <div class="preg-oracao-repeticao-label">🙏 Repita em voz alta</div>
+  <div class="preg-oracao-repeticao-texto">
+    [oração de repetição — primeira pessoa, declaratória, 5-8 linhas, uma por parágrafo ou separadas por quebra de linha]
+  </div>
+</div>` : '';
+
+    return `Você é um pregador gerando uma MENSAGEM POCKET — curta, densa, direta ao ponto.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DADOS DA MENSAGEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Tema: ${tema}
+Público: ${publico}
+Duração: ${tempo} minutos
+Ocasião: ${ocasiao}
+Contexto: ${contexto || 'Não informado'}
+Oração de repetição: ${comOracao ? 'SIM — incluir ao final' : 'NÃO'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+O QUE É UMA MENSAGEM POCKET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Uma mensagem de ${tempo} minutos. Não é resumo de pregação — é uma mensagem COMPLETA em seu próprio formato. Uma verdade bíblica, desenvolvida com profundidade, aplicada com precisão. Sem introduções longas, sem 3 pontos formais. Uma verdade que entra fundo em pouco tempo.
+
+Estrutura obrigatória:
+1. VERSÍCULO CENTRAL — o texto que ancora tudo
+2. VERDADE — 100-130 palavras desenvolvendo a verdade teológica a partir do versículo. Direto ao núcleo.
+3. REALIDADE — 80-100 palavras conectando ao mundo de "${publico}". Pode usar comparação com tecnologia, negócios, comportamento humano, ou narrativa bíblica rápida (2-3 frases).
+4. VERSÍCULO SECUNDÁRIO — segundo versículo que aprofunda ou confirma
+5. APLICAÇÃO — 60-80 palavras com UMA mudança concreta e específica para "${publico}" começar hoje
+6. DECLARAÇÃO FINAL — uma frase que a pessoa leva para casa
+${blocoOracao}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FUNDAMENTO TEOLÓGICO (não citar, usar como base)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${temaEspec.resumo}
+
+${conceitosPocket}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+VERSÍCULOS DE REFERÊNCIA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${versiculosRef}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Linguagem direta — cada palavra conta
+• Sem enrolação, sem transições longas, sem repetição
+• Referências do mundo real são bem-vindas como comparação rápida — sempre servindo à verdade bíblica
+• Sem citar Kenyon pelo nome
+• Todo texto em parágrafos corridos, sem bullets
+
+FORMATO HTML:
+
+<div class="pocket-badge">⚡ Mensagem Pocket · ${tempo} min · ${ocasiao}</div>
+<p class="preg-titulo-principal">[TÍTULO EM MAIÚSCULAS — direto, impactante]</p>
+<p class="preg-subtitulo">[frase que resume a essência em menos de 10 palavras]</p>
+<div class="preg-pocket-versiculo">
+  <div class="preg-pocket-versiculo-ref">📖 [Livro Cap:Vers]</div>
+  <div class="preg-pocket-versiculo-texto">"[versículo completo]"</div>
+</div>
+<p class="preg-paragrafo">[VERDADE — 100-130 palavras]</p>
+<p class="preg-paragrafo">[REALIDADE — 80-100 palavras]</p>
+<div class="preg-versiculo">
+  <div class="preg-versiculo-ref">📖 [Referência secundária]</div>
+  <div class="preg-versiculo-texto">"[versículo]"</div>
+</div>
+<p class="preg-paragrafo">[APLICAÇÃO — 60-80 palavras]</p>
+<div class="preg-destaque">💡 [DECLARAÇÃO FINAL — uma frase. A pessoa leva essa frase para casa.]</div>
+${formatoOracao}
+
+Gere a mensagem pocket AGORA. Densa, direta, completa.`;
+}
+
+// =====================================================================
+// GERAÇÃO COM STREAMING
+// =====================================================================
+async function gerarPregacao(event) {
+    event.preventDefault();
+
+    const tema = document.getElementById('tema').value.trim();
+    const publico = document.getElementById('publico').value.trim();
+    const contexto = document.getElementById('contexto').value.trim();
+
+    if (!tema || !publico) {
+        mostrarErro('❌ Preencha tema e público');
+        return;
+    }
+
+    // Dados conforme o modo
+    let prompt;
+    let tempo, badgeExtra;
+    let ocasiaoSalva = null, profundidadeSalva = null;
+    if (modoAtual === 'pocket') {
+        tempo = parseInt(document.getElementById('tempoPocket').value);
+        const ocasiao = document.getElementById('ocasiao').value;
+        const comOracao = document.getElementById('incluirOracao').checked;
+        ocasiaoSalva = ocasiao;
+        badgeExtra = `<span class="badge-modern">⚡ Pocket</span><span class="badge-modern">🎯 ${ocasiao}</span>${comOracao ? '<span class="badge-modern">🙏 Com oração</span>' : ''}`;
+        prompt = construirPromptPocket(tema, publico, tempo, ocasiao, contexto, comOracao);
+    } else {
+        tempo = parseInt(document.getElementById('tempo').value);
+        const profundidade = document.getElementById('profundidade').value;
+        profundidadeSalva = profundidade;
+        badgeExtra = `<span class="badge-modern">⏱️ ${tempo}min</span>${contexto ? `<span class="badge-modern">💬 Com contexto</span>` : ''}`;
+        prompt = construirPrompt(tema, publico, tempo, profundidade, contexto);
+    }
+
+    // Reset
+    currentRawText = '';
+    isStreaming = true;
+    abortController = new AbortController();
+
+    const out = document.getElementById('pregacaoOutput');
+    const mobileOut = document.getElementById('mobileOutputContent');
+
+    // Mostrar painel
+    document.getElementById('outputPanel').classList.remove('hidden');
+    document.getElementById('infoGerada').innerHTML = `
+        <div>
+            <span class="badge-modern">📌 ${tema}</span>
+            <span class="badge-modern">👥 ${publico.substring(0,30)}${publico.length>30?'...':''}</span>
+            ${badgeExtra}
+        </div>`;
+
+    const loadingMsg = modoAtual === 'pocket'
+        ? 'Gerando mensagem pocket com IA...'
+        : 'Gerando pregação personalizada com IA...';
+
+    out.innerHTML = `<div style="text-align:center;padding:3rem 1rem">
+        <div style="display:inline-block;width:2rem;height:2rem;border:2px solid #e5e7eb;border-top-color:#000;border-radius:50%;animation:spin 1s linear infinite"></div>
+        <p style="margin-top:0.75rem;color:#9ca3af">${loadingMsg}</p>
+    </div>`;
+
+    document.getElementById('submitBtn').disabled = true;
+    document.getElementById('actionButtons').classList.add('hidden');
+    document.getElementById('stopButtonWrap').classList.remove('hidden');
+
+    if (window.innerWidth >= 1024) {
+        document.getElementById('outputPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        document.getElementById('mobileOutputModal').classList.add('show');
+    }
+
+    try {
+        const response = await fetch('/api/gerar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt }),
+            signal: abortController.signal
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error?.message || `Erro ${response.status}`);
+        }
+
+        // Streaming
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let htmlBuffer = '';
+        let sseBuffer = '';       // acumula bytes decodificados até termos linhas completas
+        let firstChunk = true;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            // decode com {stream:true} preserva caracteres multibyte (acentos) cortados entre chunks
+            sseBuffer += decoder.decode(value, { stream: true });
+            const lines = sseBuffer.split('\n');
+            // a última linha pode estar incompleta — guarda para o próximo chunk
+            sseBuffer = lines.pop();
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    const data = line.slice(6);
+                    if (data === '[DONE]') continue;
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                            const text = parsed.delta.text;
+                            currentRawText += text;
+                            htmlBuffer += text;
+
+                            // Renderiza a cada chunk
+                            if (firstChunk) {
+                                out.innerHTML = '';
+                                firstChunk = false;
+                            }
+
+                            // Renderiza HTML acumulado com cursor piscante
+                            out.innerHTML = htmlBuffer + '<span class="streaming-cursor"></span>';
+                            mobileOut.innerHTML = out.innerHTML;
+
+                            // Auto-scroll
+                            out.scrollTop = out.scrollHeight;
+                        }
+                    } catch(e) {}
+                }
+            }
+        }
+
+        // Finalizado — remove cursor
+        out.innerHTML = htmlBuffer;
+        mobileOut.innerHTML = htmlBuffer;
+        currentRawText = htmlBuffer;
+
+        mostrarSucesso(modoAtual === 'pocket' ? '✅ Mensagem pocket gerada!' : '✅ Pregação gerada com sucesso!');
+
+        // Salva no histórico (Netlify Blobs) — em segundo plano, sem travar a UI
+        salvarPregacao({
+            tema,
+            publico,
+            contexto,
+            modo: modoAtual,
+            tempo,
+            ocasiao: ocasiaoSalva,
+            profundidade: profundidadeSalva,
+            conteudo: htmlBuffer
+        });
+
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            out.innerHTML = currentRawText || '<p style="color:#666;text-align:center;padding:2rem">Geração interrompida.</p>';
+            mobileOut.innerHTML = out.innerHTML;
+            mostrarErro('⏹ Geração interrompida');
+        } else {
+            out.innerHTML = `<div style="text-align:center;padding:2rem;color:#8b2222">
+                <p style="font-size:1.5rem">⚠️</p>
+                <p style="font-weight:600;margin-top:0.5rem">Erro ao gerar pregação</p>
+                <p style="font-size:0.8rem;color:#666;margin-top:0.25rem">${err.message}</p>
+            </div>`;
+            mostrarErro('❌ ' + err.message);
+        }
+    } finally {
+        isStreaming = false;
+        abortController = null;
+        document.getElementById('submitBtn').disabled = false;
+        document.getElementById('actionButtons').classList.remove('hidden');
+        document.getElementById('stopButtonWrap').classList.add('hidden');
+    }
+}
+
+function pararGeracao() {
+    if (abortController) abortController.abort();
+}
+
+// =====================================================================
+// UTILITÁRIOS DE UI
+// =====================================================================
+function mostrarErro(m) {
+    const b = document.getElementById('toastBox');
+    b.textContent = m;
+    b.className = 'toast error show';
+    setTimeout(() => b.classList.remove('show'), 4000);
+}
+
+function mostrarSucesso(m) {
+    const b = document.getElementById('toastBox');
+    b.textContent = m;
+    b.className = 'toast show';
+    setTimeout(() => b.classList.remove('show'), 3000);
+}
+
+function closeMobileModal() {
+    document.getElementById('mobileOutputModal').classList.remove('show');
+}
+
+function limpar() {
+    document.getElementById('outputPanel').classList.add('hidden');
+    document.getElementById('pregacaoOutput').innerHTML = '<div class="output-placeholder"><div style="font-size:2rem;margin-bottom:0.5rem">✨</div><p>Sua pregação aparecerá aqui</p></div>';
+}
+
+function copiarParaClipboard() {
+    const texto = document.getElementById('pregacaoOutput').innerText;
+    navigator.clipboard.writeText(texto).then(() => mostrarSucesso('✅ Copiado!'));
+}
+
+function exportarTXT() {
+    const texto = document.getElementById('pregacaoOutput').innerText;
+    const tema = document.getElementById('tema').value;
+    const blob = new Blob([texto], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pregacao_${tema.replace(/\s+/g,'_')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function imprimirPregacao() {
+    const pw = window.open('','','height=600,width=800');
+    pw.document.write(`<html><head><title>Pregação</title><style>
+        body{font-family:Georgia,serif;line-height:1.8;padding:2rem;max-width:700px;margin:0 auto}
+        .preg-titulo-principal{font-size:1.5rem;font-weight:800;text-align:center;margin-bottom:0.25rem}
+        .preg-subtitulo{font-size:0.85rem;color:#666;text-align:center;font-style:italic;margin-bottom:1.5rem}
+        .preg-secao-titulo{font-size:0.8rem;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;border-bottom:2px solid #000;padding-bottom:0.4rem;margin:1.5rem 0 0.75rem}
+        .preg-paragrafo{margin-bottom:0.85rem;text-align:justify}
+        .preg-versiculo{border-left:4px solid #333;padding:0.75rem 1rem;margin:1rem 0;background:#f9f9f9}
+        .preg-versiculo-ref{font-size:0.7rem;font-weight:700;text-transform:uppercase;margin-bottom:0.25rem}
+        .preg-versiculo-texto{font-style:italic}
+        .preg-citacao{border-left:4px solid #888;padding:0.75rem 1rem;margin:1rem 0;background:#f3f3f3}
+        .preg-citacao-texto{font-style:italic;color:#444}
+        .preg-citacao-autor{font-size:0.7rem;font-weight:700;text-align:right;margin-top:0.5rem}
+        .preg-ponto{border-left:3px solid #000;padding-left:1rem;margin:1rem 0}
+        .preg-ponto-titulo{font-weight:700;margin-bottom:0.5rem}
+        .preg-destaque{background:#1a1a1a;color:#fff;border-radius:0.5rem;padding:1rem;margin:1rem 0}
+        .preg-oracao{font-style:italic;color:#444;border:1px solid #ddd;padding:1rem;border-radius:0.5rem}
+        .preg-divisor{border:none;border-top:1px dashed #ccc;margin:1.25rem 0}
+    </style></head><body>${document.getElementById('pregacaoOutput').innerHTML}</body></html>`);
+    pw.document.close();
+    pw.print();
+}
+
+function regenerar() {
+    document.getElementById('pregacaoForm').dispatchEvent(new Event('submit'));
+}
+
+// =====================================================================
+// HISTÓRICO (Netlify Blobs via /api/historico)
+// =====================================================================
+function escaparHtml(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function formatarData(iso) {
+    try {
+        const d = new Date(iso);
+        return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+             + ' · ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return iso || ''; }
+}
+
+async function salvarPregacao(dados) {
+    try {
+        await fetch('/api/historico', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+    } catch (e) {
+        // Salvar é secundário — não interrompe a experiência de geração
+        console.warn('Não foi possível salvar no histórico:', e);
+    }
+}
+
+function abrirHistorico() {
+    document.getElementById('historicoModal').classList.add('show');
+    carregarHistorico();
+}
+
+function fecharHistorico() {
+    document.getElementById('historicoModal').classList.remove('show');
+}
+
+async function carregarHistorico() {
+    const lista = document.getElementById('historicoLista');
+    lista.innerHTML = '<div class="historico-loading">Carregando…</div>';
+    try {
+        const res = await fetch('/api/historico');
+        if (!res.ok) throw new Error('Falha ao carregar');
+        const data = await res.json();
+        const pregacoes = data.pregacoes || [];
+
+        if (!pregacoes.length) {
+            lista.innerHTML = '<div class="historico-vazio">📭 Nenhuma pregação salva ainda.<br>Gere uma mensagem e ela aparecerá aqui.</div>';
+            return;
+        }
+
+        lista.innerHTML = pregacoes.map(p => {
+            const modoBadge = p.modo === 'pocket'
+                ? '<span class="badge-modern">⚡ Pocket</span>'
+                : '<span class="badge-modern">📖 Completa</span>';
+            const tempoBadge = p.tempo ? `<span class="badge-modern">⏱️ ${escaparHtml(p.tempo)}min</span>` : '';
+            const pub = p.publico ? escaparHtml(p.publico.substring(0, 60)) + (p.publico.length > 60 ? '…' : '') : '';
+            return `<div class="historico-item">
+                <div class="historico-item-tema">${escaparHtml(p.tema)}</div>
+                <div class="historico-item-meta">${formatarData(p.data)}${pub ? ' · 👥 ' + pub : ''}</div>
+                <div style="margin-bottom:0.65rem">${modoBadge}${tempoBadge}</div>
+                <div class="historico-item-acoes">
+                    <button class="btn-secondary-modern" onclick="verPregacao('${p.id}')">👁️ Ver</button>
+                    <button class="btn-excluir" onclick="excluirPregacao('${p.id}')">🗑️ Excluir</button>
+                </div>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        lista.innerHTML = '<div class="historico-vazio">⚠️ Não foi possível carregar o histórico.<br><span style="font-size:0.8rem">' + escaparHtml(e.message) + '</span></div>';
+    }
+}
+
+async function verPregacao(id) {
+    try {
+        const res = await fetch('/api/historico?id=' + encodeURIComponent(id));
+        if (!res.ok) throw new Error('Pregação não encontrada');
+        const p = await res.json();
+
+        currentRawText = p.conteudo || '';
+        document.getElementById('outputPanel').classList.remove('hidden');
+        document.getElementById('outputIcon').textContent = p.modo === 'pocket' ? '⚡' : '📖';
+        document.getElementById('outputTitulo').textContent = p.modo === 'pocket' ? 'Mensagem Pocket' : 'Pregação Gerada';
+        document.getElementById('infoGerada').innerHTML = `<div>
+            <span class="badge-modern">📌 ${escaparHtml(p.tema)}</span>
+            <span class="badge-modern">🗂️ ${formatarData(p.data)}</span>
+        </div>`;
+
+        const out = document.getElementById('pregacaoOutput');
+        out.innerHTML = p.conteudo || '';
+        document.getElementById('mobileOutputContent').innerHTML = p.conteudo || '';
+
+        fecharHistorico();
+
+        if (window.innerWidth >= 1024) {
+            document.getElementById('outputPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            document.getElementById('mobileOutputModal').classList.add('show');
+        }
+    } catch (e) {
+        mostrarErro('❌ ' + e.message);
+    }
+}
+
+async function excluirPregacao(id) {
+    if (!window.confirm('Excluir esta pregação do histórico? Esta ação não pode ser desfeita.')) return;
+    try {
+        const res = await fetch('/api/historico?id=' + encodeURIComponent(id), { method: 'DELETE' });
+        if (!res.ok) throw new Error('Falha ao excluir');
+        mostrarSucesso('🗑️ Pregação excluída');
+        carregarHistorico();
+    } catch (e) {
+        mostrarErro('❌ ' + e.message);
+    }
+}
+
+document.getElementById('pregacaoForm').addEventListener('submit', gerarPregacao);
+</script>
+</body>
+</html>

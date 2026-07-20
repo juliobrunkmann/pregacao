@@ -1,0 +1,10 @@
+{
+  "name": "gerador-pregacoes",
+  "version": "1.0.0",
+  "description": "Gerador de Pregações — app com Netlify Functions (chave segura) e histórico via Netlify Blobs.",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}

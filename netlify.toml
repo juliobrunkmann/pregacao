@@ -1,0 +1,17 @@
+# =====================================================================
+# netlify.toml — configuração do Gerador de Pregações
+# =====================================================================
+
+[build]
+  # Publica a raiz do projeto (index.html + kenyon-context.js)
+  publish = "."
+  # Diretório das Netlify Functions
+  functions = "netlify/functions"
+
+[functions]
+  # Empacotador das functions
+  node_bundler = "esbuild"
+
+# As rotas /api/gerar e /api/historico são definidas por
+# "export const config = { path: ... }" dentro de cada function (v2),
+# então não é preciso configurar redirects aqui.
